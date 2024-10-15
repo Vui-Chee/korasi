@@ -46,8 +46,6 @@ enum Commands {
     Delete,
 }
 
-// TODO: refactor main() to match subcommands first
-//
 // TODO: selection machine type, simd, gpu, fpga etc.
 // TODO: reuse existing instance.
 #[tokio::main]
@@ -89,10 +87,25 @@ async fn main() -> Result<(), EC2Error> {
         }
         Commands::List => {
             let res = ec2.describe_instance().await.unwrap();
-            println!("reservations = {:?}", res[0].tags());
+            for (i, instance) in res.iter().enumerate() {
+                let tags = instance.tags();
+                let mut name = "";
+                for t in tags {
+                    if t.key() == Some("Name") {
+                        name = t.value().unwrap();
+                    }
+                }
+                tracing::info!(
+                    "{}. instance ({}) = {:?}, state = {:?}",
+                    i + 1,
+                    name,
+                    instance.instance_id(),
+                    instance.state().unwrap().name()
+                );
+            }
         }
         Commands::Delete => {
-            println!("delete ");
+            tracing::info!("delete ");
         }
     };
 

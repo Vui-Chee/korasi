@@ -4,7 +4,7 @@ use aws_sdk_ec2::{
     client::Waiters,
     error::ProvideErrorMetadata,
     types::{
-        Instance, InstanceType, IpPermission, IpRange, KeyFormat, KeyPairInfo, KeyType,
+        Filter, Instance, InstanceType, IpPermission, IpRange, KeyFormat, KeyPairInfo, KeyType,
         ResourceType, SecurityGroup, Tag, TagSpecification,
     },
     Client as EC2Client,
@@ -12,6 +12,8 @@ use aws_sdk_ec2::{
 use aws_smithy_runtime_api::client::waiters::error::WaiterError;
 
 use crate::util::UtilImpl as Util;
+
+const GLOBAL_TAG_FILTER: &str = "hpc-launcher";
 
 #[derive(Clone)]
 #[allow(dead_code)]
@@ -254,24 +256,24 @@ impl EC2Impl {
         Ok(())
     }
 
-    // TODO: Get instances by tag (and possibly some other filter)
-    #[allow(dead_code)]
     pub async fn describe_instance(&self) -> Result<Vec<Instance>, EC2Error> {
         let response = self
             .client
             .describe_instances()
-            .set_filters(Some(vec![]))
-            // .instance_ids(instance_id)
+            .set_filters(Some(vec![Filter::builder()
+                .set_name(Some("tag:application".into()))
+                .set_values(Some(vec![GLOBAL_TAG_FILTER.into()]))
+                .build()]))
             .send()
             .await?;
 
-        let instances = response
-            .reservations()
-            .first()
-            .ok_or_else(|| EC2Error::new("No instance reservations".to_string()))?
-            .instances();
+        let reservations = response.reservations();
+        let mut instances = vec![];
+        for r in reservations {
+            instances.extend(r.instances().to_owned());
+        }
 
-        Ok(instances.to_owned())
+        Ok(instances)
     }
 
     #[allow(dead_code)]
