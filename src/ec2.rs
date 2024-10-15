@@ -16,7 +16,6 @@ use crate::util::UtilImpl as Util;
 const GLOBAL_TAG_FILTER: &str = "hpc-launcher";
 
 #[derive(Clone)]
-#[allow(dead_code)]
 pub struct EC2Impl {
     pub client: EC2Client,
 }
@@ -63,7 +62,6 @@ impl EC2Impl {
         Ok(output.key_pairs.unwrap_or_default())
     }
 
-    #[allow(dead_code)]
     pub async fn delete_key_pair(&self, key_pair_id: &str) -> Result<(), EC2Error> {
         let key_pair_id: String = key_pair_id.into();
         tracing::info!("Deleting key pair {key_pair_id}");
@@ -159,7 +157,6 @@ impl EC2Impl {
         Ok(())
     }
 
-    #[allow(dead_code)]
     pub async fn delete_security_group(&self, group_id: &str) -> Result<(), EC2Error> {
         tracing::info!("Deleting security group {group_id}");
         self.client
@@ -235,7 +232,6 @@ impl EC2Impl {
     }
 
     /// Wait for an instance to be ready and status ok (default wait 60 seconds)
-    #[allow(dead_code)]
     pub async fn wait_for_instance_ready(
         &self,
         instance_id: &str,
@@ -276,7 +272,6 @@ impl EC2Impl {
         Ok(instances)
     }
 
-    #[allow(dead_code)]
     pub async fn start_instance(&self, instance_id: &str) -> Result<(), EC2Error> {
         tracing::info!("Starting instance {instance_id}");
 
@@ -291,7 +286,6 @@ impl EC2Impl {
         Ok(())
     }
 
-    #[allow(dead_code)]
     pub async fn stop_instance(&self, instance_id: &str) -> Result<(), EC2Error> {
         tracing::info!("Stopping instance {instance_id}");
 
@@ -308,7 +302,6 @@ impl EC2Impl {
         Ok(())
     }
 
-    #[allow(dead_code)]
     pub async fn reboot_instance(&self, instance_id: &str) -> Result<(), EC2Error> {
         tracing::info!("Rebooting instance {instance_id}");
 
@@ -341,7 +334,6 @@ impl EC2Impl {
         Ok(())
     }
 
-    #[allow(dead_code)]
     pub async fn delete_instance(&self, instance_id: &str) -> Result<(), EC2Error> {
         tracing::info!("Deleting instance with id {instance_id}");
         self.stop_instance(instance_id).await?;
