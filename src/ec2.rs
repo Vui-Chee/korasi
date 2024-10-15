@@ -252,14 +252,28 @@ impl EC2Impl {
         Ok(())
     }
 
+    /// List instances that are "active" (non-terminated) and are tagged
+    /// by this tool.
     pub async fn describe_instance(&self) -> Result<Vec<Instance>, EC2Error> {
         let response = self
             .client
             .describe_instances()
-            .set_filters(Some(vec![Filter::builder()
-                .set_name(Some("tag:application".into()))
-                .set_values(Some(vec![GLOBAL_TAG_FILTER.into()]))
-                .build()]))
+            .set_filters(Some(vec![
+                Filter::builder()
+                    .set_name(Some("tag:application".into()))
+                    .set_values(Some(vec![GLOBAL_TAG_FILTER.into()]))
+                    .build(),
+                Filter::builder()
+                    .set_name(Some("instance-state-name".into()))
+                    .set_values(Some(vec![
+                        "pending".into(),
+                        "running".into(),
+                        "shutting-down".into(),
+                        "stopping".into(),
+                        "stopped".into(),
+                    ]))
+                    .build(),
+            ]))
             .send()
             .await?;
 
