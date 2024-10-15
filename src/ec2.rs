@@ -267,11 +267,11 @@ impl EC2Impl {
             .send()
             .await?;
 
-        let reservations = response.reservations();
-        let mut instances = vec![];
-        for r in reservations {
-            instances.extend(r.instances().to_owned());
-        }
+        let instances: Vec<_> = response
+            .reservations()
+            .iter()
+            .flat_map(|r| r.instances().to_owned())
+            .collect();
 
         Ok(instances)
     }
