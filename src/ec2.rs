@@ -209,7 +209,6 @@ impl EC2Impl {
             return Err(EC2Error::new("Failed to create instance"));
         }
 
-        // TODO: Tag all instances with the same/diff name?
         let mut instance_ids = vec![];
         for i in run_instances.instances() {
             let instance_id = i.instance_id().unwrap();
@@ -291,21 +290,25 @@ impl EC2Impl {
         Ok(instances)
     }
 
-    pub async fn start_instance(&self, instance_id: &str) -> Result<(), EC2Error> {
+    pub async fn start_instances(&self, instance_id: &str) -> Result<(), EC2Error> {
         tracing::info!("Starting instance {instance_id}");
 
-        self.client
-            .start_instances()
-            .instance_ids(instance_id)
-            .send()
-            .await?;
+        let mut starter = self.client.start_instances();
+        for id in instance_id.split(",") {
+            starter = starter.instance_ids(id);
+        }
+        starter.send().await?;
 
         tracing::info!("Started instance.");
 
         Ok(())
     }
 
-    pub async fn stop_instance(&self, instance_ids: &str) -> Result<(), EC2Error> {
+    pub async fn stop_instances(
+        &self,
+        instance_ids: &str,
+        must_wait: bool,
+    ) -> Result<(), EC2Error> {
         tracing::info!("Stopping instance {instance_ids}");
 
         let mut stopper = self.client.stop_instances();
@@ -314,9 +317,10 @@ impl EC2Impl {
         }
         stopper.send().await?;
 
-        self.wait_for_instance_stopped(instance_ids, None).await?;
-
-        tracing::info!("Stopped instance.");
+        if must_wait {
+            self.wait_for_instance_stopped(instance_ids, None).await?;
+            tracing::info!("Stopped instance.");
+        }
 
         Ok(())
     }
@@ -356,10 +360,10 @@ impl EC2Impl {
         Ok(())
     }
 
-    pub async fn delete_instance(&self, instance_ids: &str) -> Result<(), EC2Error> {
+    pub async fn delete_instances(&self, instance_ids: &str) -> Result<(), EC2Error> {
         tracing::info!("Deleting instance with id {:?}", instance_ids);
 
-        self.stop_instance(instance_ids).await?;
+        self.stop_instances(instance_ids, true).await?;
 
         let mut terminator = self.client.terminate_instances();
         for id in instance_ids.split(",") {

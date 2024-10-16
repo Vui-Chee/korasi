@@ -45,6 +45,12 @@ enum Commands {
     /// using a multi-select input.
     Delete,
 
+    /// Start 1 or more instances.
+    ///
+    /// Starting a stopped instance without an EIP will
+    /// result in a new IP being assigned.
+    Start,
+
     /// Stop 1 or more instances.
     Stop,
 }
@@ -110,7 +116,7 @@ async fn main() -> Result<(), EC2Error> {
                 );
             }
         }
-        Commands::Delete => {
+        remaining => {
             let chosen =
                 multi_select_instances(&ec2, "Choose the instance(s) you want to delete:").await;
 
@@ -118,26 +124,30 @@ async fn main() -> Result<(), EC2Error> {
                 if chosen.is_empty() {
                     tracing::warn!("No instance was deleted.");
                 } else {
-                    let instance_ids = chosen
-                        .iter()
-                        .map(|x| x.split(":").collect::<Vec<_>>()[1])
-                        .collect::<Vec<_>>()
-                        .join(",");
-                    tracing::info!("instances to delete = {:?}", instance_ids);
-                    ec2.delete_instance(&instance_ids).await?;
+                    let instance_ids = instances_to_str(chosen);
+
+                    if let Commands::Delete = remaining {
+                        ec2.delete_instances(&instance_ids).await?;
+                    } else if let Commands::Start = remaining {
+                        ec2.start_instances(&instance_ids).await?;
+                    } else if let Commands::Stop = remaining {
+                        ec2.stop_instances(&instance_ids, false).await?;
+                    }
                 }
             }
-        }
-        Commands::Stop => {
-            let chosen = multi_select_instances(&ec2, "Choose instances to stop:")
-                .await
-                .unwrap();
-
-            tracing::info!("chosen = {:?}", chosen);
         }
     };
 
     Ok(())
+}
+
+/// Express list of instance ids as a comma separated string.
+fn instances_to_str(instances: Vec<String>) -> String {
+    instances
+        .iter()
+        .map(|x| x.split(":").collect::<Vec<_>>()[1])
+        .collect::<Vec<_>>()
+        .join(",")
 }
 
 async fn multi_select_instances(ec2: &EC2, prompt: &str) -> Result<Vec<String>, InquireError> {
