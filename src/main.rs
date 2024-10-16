@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use aws_sdk_ec2::types::InstanceType;
 use clap::{Parser, Subcommand};
 use infra::create::CreateCommand;
@@ -7,7 +5,6 @@ use infra::load_config;
 use inquire::{InquireError, MultiSelect, Select};
 
 use infra::ec2::{EC2Error, EC2Impl as EC2};
-use tokio::task::JoinSet;
 
 #[derive(Debug, Parser)]
 #[command(arg_required_else_help = true)]
@@ -68,7 +65,7 @@ async fn main() -> Result<(), EC2Error> {
 
     let shared_config = load_config(Some(region), Some(profile), None).await;
     let client = aws_sdk_ec2::Client::new(&shared_config);
-    let ec2 = Arc::new(EC2::new(client));
+    let ec2 = EC2::new(client);
 
     match commands {
         Commands::Create { ami_id } => {
@@ -121,19 +118,13 @@ async fn main() -> Result<(), EC2Error> {
                 if chosen.is_empty() {
                     tracing::warn!("No instance was deleted.");
                 } else {
-                    let mut tasks = JoinSet::new();
-                    for sel_str in chosen {
-                        let parts: Vec<_> = sel_str.split(":").collect();
-                        let instance_id = parts[1].to_owned();
-                        let ec2 = Arc::clone(&ec2);
-                        tasks.spawn(async move {
-                            match ec2.delete_instance(&instance_id).await {
-                                Ok(_) => tracing::info!("instance {instance_id} deleted."),
-                                Err(err) => tracing::error!("Failed to delete instance, {err}."),
-                            }
-                        });
-                    }
-                    tasks.join_all().await;
+                    let instance_ids = chosen
+                        .iter()
+                        .map(|x| x.split(":").collect::<Vec<_>>()[1])
+                        .collect::<Vec<_>>()
+                        .join(",");
+                    tracing::info!("instances to delete = {:?}", instance_ids);
+                    ec2.delete_instance(&instance_ids).await?;
                 }
             }
         }
@@ -141,8 +132,6 @@ async fn main() -> Result<(), EC2Error> {
             let chosen = multi_select_instances(&ec2, "Choose instances to stop:")
                 .await
                 .unwrap();
-
-            // TODO: stop multiple instances async...
 
             tracing::info!("chosen = {:?}", chosen);
         }
@@ -159,12 +148,16 @@ async fn multi_select_instances(ec2: &EC2, prompt: &str) -> Result<Vec<String>, 
         .iter()
         .map(|i| {
             let mut name = "";
+            let status = i.state().unwrap().name().unwrap();
             for t in i.tags() {
                 if t.key() == Some("Name") {
                     name = t.value().unwrap();
                 }
             }
-            format!("{}:{}", name, i.instance_id().unwrap())
+            if name.is_empty() {
+                name = "(empty)";
+            }
+            format!("{}:{}:{}", name, i.instance_id().unwrap(), status)
         })
         .collect();
 

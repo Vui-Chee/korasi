@@ -167,7 +167,7 @@ impl EC2Impl {
         Ok(())
     }
 
-    pub async fn create_instance<'a>(
+    pub async fn create_instances<'a>(
         &self,
         instance_name: &str,
         image_id: &'a str,
@@ -175,7 +175,7 @@ impl EC2Impl {
         key_pair: &'a KeyPairInfo,
         security_groups: Vec<&'a SecurityGroup>,
         user_data: Option<String>,
-    ) -> Result<String, EC2Error> {
+    ) -> Result<Vec<String>, EC2Error> {
         let run_instances = self
             .client
             .run_instances()
@@ -209,26 +209,31 @@ impl EC2Impl {
             return Err(EC2Error::new("Failed to create instance"));
         }
 
-        let instance_id = run_instances.instances()[0].instance_id().unwrap();
-        let response = self
-            .client
-            .create_tags()
-            .resources(instance_id)
-            .tags(Tag::builder().key("Name").value(instance_name).build())
-            .send()
-            .await;
+        // TODO: Tag all instances with the same/diff name?
+        let mut instance_ids = vec![];
+        for i in run_instances.instances() {
+            let instance_id = i.instance_id().unwrap();
+            let response = self
+                .client
+                .create_tags()
+                .resources(instance_id)
+                .tags(Tag::builder().key("Name").value(instance_name).build())
+                .send()
+                .await;
 
-        match response {
-            Ok(_) => tracing::info!("Created {instance_id} and applied tags."),
-            Err(err) => {
-                tracing::info!("Error applying tags to {instance_id}: {err:?}");
-                return Err(err.into());
+            match response {
+                Ok(_) => {
+                    tracing::info!("Created {instance_id} and applied tags.");
+                    instance_ids.push(instance_id.to_string());
+                }
+                Err(err) => {
+                    tracing::info!("Error applying tags to {instance_id}: {err:?}");
+                    return Err(err.into());
+                }
             }
         }
 
-        tracing::info!("Instance is created.");
-
-        Ok(instance_id.to_string())
+        Ok(instance_ids)
     }
 
     /// Wait for an instance to be ready and status ok (default wait 60 seconds)
@@ -300,16 +305,16 @@ impl EC2Impl {
         Ok(())
     }
 
-    pub async fn stop_instance(&self, instance_id: &str) -> Result<(), EC2Error> {
-        tracing::info!("Stopping instance {instance_id}");
+    pub async fn stop_instance(&self, instance_ids: &str) -> Result<(), EC2Error> {
+        tracing::info!("Stopping instance {instance_ids}");
 
-        self.client
-            .stop_instances()
-            .instance_ids(instance_id)
-            .send()
-            .await?;
+        let mut stopper = self.client.stop_instances();
+        for id in instance_ids.split(",") {
+            stopper = stopper.instance_ids(id);
+        }
+        stopper.send().await?;
 
-        self.wait_for_instance_stopped(instance_id, None).await?;
+        self.wait_for_instance_stopped(instance_ids, None).await?;
 
         tracing::info!("Stopped instance.");
 
@@ -330,12 +335,14 @@ impl EC2Impl {
 
     pub async fn wait_for_instance_stopped(
         &self,
-        instance_id: &str,
+        instance_ids: &str,
         duration: Option<Duration>,
     ) -> Result<(), EC2Error> {
-        self.client
-            .wait_until_instance_stopped()
-            .instance_ids(instance_id)
+        let mut waiter = self.client.wait_until_instance_stopped();
+        for id in instance_ids.split(",") {
+            waiter = waiter.instance_ids(id);
+        }
+        waiter
             .wait(duration.unwrap_or(Duration::from_secs(90)))
             .await
             .map_err(|err| match err {
@@ -345,26 +352,32 @@ impl EC2Impl {
                 )),
                 _ => EC2Error::from(err),
             })?;
+
         Ok(())
     }
 
-    pub async fn delete_instance(&self, instance_id: &str) -> Result<(), EC2Error> {
-        tracing::info!("Deleting instance with id {instance_id}");
-        self.stop_instance(instance_id).await?;
-        self.client
-            .terminate_instances()
-            .instance_ids(instance_id)
-            .send()
-            .await?;
-        self.wait_for_instance_terminated(instance_id).await?;
-        tracing::info!("Terminated instance with id {instance_id}");
+    pub async fn delete_instance(&self, instance_ids: &str) -> Result<(), EC2Error> {
+        tracing::info!("Deleting instance with id {:?}", instance_ids);
+
+        self.stop_instance(instance_ids).await?;
+
+        let mut terminator = self.client.terminate_instances();
+        for id in instance_ids.split(",") {
+            terminator = terminator.instance_ids(id);
+        }
+        terminator.send().await?;
+
+        self.wait_for_instance_terminated(instance_ids).await?;
+        // tracing::info!("Terminated instance with id {:?}", instance_ids);
         Ok(())
     }
 
-    async fn wait_for_instance_terminated(&self, instance_id: &str) -> Result<(), EC2Error> {
-        self.client
-            .wait_until_instance_terminated()
-            .instance_ids(instance_id)
+    async fn wait_for_instance_terminated(&self, instance_ids: &str) -> Result<(), EC2Error> {
+        let mut waiter = self.client.wait_until_instance_terminated();
+        for id in instance_ids.split(",") {
+            waiter = waiter.instance_ids(id);
+        }
+        waiter
             .wait(Duration::from_secs(60))
             .await
             .map_err(|err| match err {

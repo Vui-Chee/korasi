@@ -64,8 +64,8 @@ impl CreateCommand {
 
         let name = Petnames::default().generate_one(1, ":").unwrap();
 
-        let _instance_id = ec2
-            .create_instance(
+        let _instance_ids = ec2
+            .create_instances(
                 &name,
                 &ami_id,
                 machine,
