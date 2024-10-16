@@ -15,6 +15,6 @@ inquire = "0.7.5"
 petname = "2.0.2"
 reqwest = "0.12.8"
 russh = "0.45.0"
-tokio = { version = "1", features = ["full"] }
+tokio = { version = "1", features = ["rt"] }
 tracing = "0.1.40"
 tracing-subscriber = "0.3.18"

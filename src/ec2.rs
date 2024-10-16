@@ -336,7 +336,7 @@ impl EC2Impl {
         self.client
             .wait_until_instance_stopped()
             .instance_ids(instance_id)
-            .wait(duration.unwrap_or(Duration::from_secs(60)))
+            .wait(duration.unwrap_or(Duration::from_secs(90)))
             .await
             .map_err(|err| match err {
                 WaiterError::ExceededMaxWait(exceeded) => EC2Error(format!(
