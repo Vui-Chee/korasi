@@ -62,11 +62,11 @@ impl CreateCommand {
             .ok();
         tracing::info!("User data: {:?}", user_data);
 
-        let name = Petnames::default().generate_one(1, ":");
+        let name = Petnames::default().generate_one(1, ":").unwrap();
 
-        let name = ec2
+        let _instance_id = ec2
             .create_instance(
-                &name.unwrap(),
+                &name,
                 &ami_id,
                 machine,
                 &info.unwrap(),
