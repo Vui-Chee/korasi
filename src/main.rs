@@ -124,7 +124,7 @@ async fn main() -> Result<(), EC2Error> {
                 if chosen.is_empty() {
                     tracing::warn!("No instance was deleted.");
                 } else {
-                    let instance_ids = instances_to_str(chosen);
+                    let instance_ids = ids_to_str(chosen);
 
                     if let Commands::Delete = remaining {
                         ec2.delete_instances(&instance_ids).await?;
@@ -142,9 +142,8 @@ async fn main() -> Result<(), EC2Error> {
 }
 
 /// Express list of instance ids as a comma separated string.
-fn instances_to_str(instances: Vec<String>) -> String {
-    instances
-        .iter()
+fn ids_to_str(ids: Vec<String>) -> String {
+    ids.iter()
         .map(|x| x.split(":").collect::<Vec<_>>()[1])
         .collect::<Vec<_>>()
         .join(",")
