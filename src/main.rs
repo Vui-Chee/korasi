@@ -2,7 +2,7 @@ use aws_sdk_ec2::types::InstanceType;
 use clap::{Parser, Subcommand};
 use infra::create::CreateCommand;
 use infra::load_config;
-use inquire::Select;
+use inquire::{MultiSelect, Select};
 
 use infra::ec2::{EC2Error, EC2Impl as EC2};
 
@@ -105,7 +105,38 @@ async fn main() -> Result<(), EC2Error> {
             }
         }
         Commands::Delete => {
-            tracing::info!("delete ");
+            // Get all instances tagged by this tool.
+            let instances = ec2.describe_instance().await.unwrap();
+
+            let options: Vec<_> = instances
+                .iter()
+                .map(|i| {
+                    let mut name = "";
+                    for t in i.tags() {
+                        if t.key() == Some("Name") {
+                            name = t.value().unwrap();
+                        }
+                    }
+                    format!("{}:{}", name, i.instance_id().unwrap())
+                })
+                .collect();
+            let chosen = MultiSelect::new("Choose the instance(s) you want to delete:", options)
+                .with_vim_mode(true)
+                .prompt();
+            if let Ok(chosen) = chosen {
+                if chosen.is_empty() {
+                    tracing::warn!("No instance was deleted.");
+                } else {
+                    // TODO: run each delete separate async tasks
+                    for sel_str in &chosen {
+                        let (_name, instance_id) = sel_str.split_once(":").unwrap();
+                        ec2.delete_instance(instance_id).await?;
+                    }
+                    tracing::info!("Deleted instances = {:?}", chosen);
+                }
+            } else {
+                tracing::info!("Ctrl-c. Bye!");
+            }
         }
     };
 
