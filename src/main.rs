@@ -82,12 +82,10 @@ async fn main() -> Result<(), EC2Error> {
     match commands {
         Commands::Create { ami_id } => {
             let machine: InstanceType =
-                match Select::new("Select the machine type:", InstanceType::values().to_vec())
+                Select::new("Select the machine type:", InstanceType::values().to_vec())
                     .prompt()
-                {
-                    Ok(m) => m.into(),
-                    Err(err) => panic!("{}", err),
-                };
+                    .unwrap()
+                    .into();
             tracing::info!("Launching {machine} instance...");
             CreateCommand
                 .launch(
