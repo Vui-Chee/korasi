@@ -14,7 +14,7 @@ struct Opt {
     profile: String,
 
     /// Select region where ec2 instance is located.
-    #[structopt(long, default_value = "ap-southeast-1")]
+    #[structopt(short, long, default_value = "ap-southeast-1")]
     region: String,
 
     /// Enable to show logs.
@@ -43,7 +43,10 @@ enum Commands {
 
     /// Delete 1 or more instances, where all options are displayed
     /// using a multi-select input.
-    Delete,
+    Delete {
+        #[arg(long, short, default_value_t = true)]
+        wait: bool,
+    },
 
     /// Start 1 or more instances.
     ///
@@ -52,7 +55,10 @@ enum Commands {
     Start,
 
     /// Stop 1 or more instances.
-    Stop,
+    Stop {
+        #[arg(long, short)]
+        wait: bool,
+    },
 }
 
 #[tokio::main]
@@ -117,23 +123,24 @@ async fn main() -> Result<(), EC2Error> {
             }
         }
         remaining => {
-            let chosen =
-                multi_select_instances(&ec2, "Choose the instance(s) you want to delete:").await;
+            let chosen = multi_select_instances(&ec2, "Choose the instance(s):").await;
 
             if let Ok(chosen) = chosen {
                 if chosen.is_empty() {
-                    tracing::warn!("No instance was deleted.");
+                    tracing::warn!("No instance was selected.");
                 } else {
                     let instance_ids = ids_to_str(chosen);
 
-                    if let Commands::Delete = remaining {
-                        ec2.delete_instances(&instance_ids).await?;
+                    if let Commands::Delete { wait } = remaining {
+                        ec2.delete_instances(&instance_ids, wait).await?;
                     } else if let Commands::Start = remaining {
                         ec2.start_instances(&instance_ids).await?;
-                    } else if let Commands::Stop = remaining {
-                        ec2.stop_instances(&instance_ids, false).await?;
+                    } else if let Commands::Stop { wait } = remaining {
+                        ec2.stop_instances(&instance_ids, wait).await?;
                     }
                 }
+            } else {
+                tracing::warn!("No active instances.");
             }
         }
     };

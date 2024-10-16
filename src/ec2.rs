@@ -304,11 +304,7 @@ impl EC2Impl {
         Ok(())
     }
 
-    pub async fn stop_instances(
-        &self,
-        instance_ids: &str,
-        must_wait: bool,
-    ) -> Result<(), EC2Error> {
+    pub async fn stop_instances(&self, instance_ids: &str, wait: bool) -> Result<(), EC2Error> {
         tracing::info!("Stopping instance {instance_ids}");
 
         let mut stopper = self.client.stop_instances();
@@ -317,7 +313,7 @@ impl EC2Impl {
         }
         stopper.send().await?;
 
-        if must_wait {
+        if wait {
             self.wait_for_instance_stopped(instance_ids, None).await?;
             tracing::info!("Stopped instance.");
         }
@@ -360,7 +356,7 @@ impl EC2Impl {
         Ok(())
     }
 
-    pub async fn delete_instances(&self, instance_ids: &str) -> Result<(), EC2Error> {
+    pub async fn delete_instances(&self, instance_ids: &str, wait: bool) -> Result<(), EC2Error> {
         tracing::info!("Deleting instance with id {:?}", instance_ids);
 
         self.stop_instances(instance_ids, true).await?;
@@ -371,8 +367,11 @@ impl EC2Impl {
         }
         terminator.send().await?;
 
-        self.wait_for_instance_terminated(instance_ids).await?;
-        // tracing::info!("Terminated instance with id {:?}", instance_ids);
+        if wait {
+            self.wait_for_instance_terminated(instance_ids).await?;
+            tracing::info!("Terminated instance with ids {:?}", instance_ids);
+        }
+
         Ok(())
     }
 
