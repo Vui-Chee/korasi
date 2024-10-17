@@ -50,6 +50,7 @@ pub async fn exec(session: Handle<ClientSSH>, command: &str) -> anyhow::Result<u
 
     let mut code = None;
     let mut stdout = tokio::io::stdout();
+    let mut stderr = tokio::io::stderr();
 
     loop {
         // There's an event available on the session channel
@@ -66,6 +67,10 @@ pub async fn exec(session: Handle<ClientSSH>, command: &str) -> anyhow::Result<u
             ChannelMsg::ExitStatus { exit_status } => {
                 code = Some(exit_status);
                 // cannot leave the loop immediately, there might still be more data to receive
+            }
+            ChannelMsg::ExtendedData { ref data } => {
+                stderr.write_all(data).await?;
+                stderr.flush().await?;
             }
             _ => {}
         }
