@@ -68,7 +68,7 @@ pub async fn exec(session: Handle<ClientSSH>, command: &str) -> anyhow::Result<u
                 code = Some(exit_status);
                 // cannot leave the loop immediately, there might still be more data to receive
             }
-            ChannelMsg::ExtendedData { ref data } => {
+            ChannelMsg::ExtendedData { ref data, ext: _ } => {
                 stderr.write_all(data).await?;
                 stderr.flush().await?;
             }
