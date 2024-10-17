@@ -1,0 +1,10 @@
+- [ ] respect .gitignore during syncing/upload
+- [ ] display alternative UI in non-debug mode
+- [ ] better hardware selection flow
+- [ ] auto stop/terminate
+- [ ] auth login
+- [ ] cargo remote run
+- [ ] cargo remote check
+- [ ] init subcommand (to initialize boiler code to test AVX intrinsics eg.)
+- [ ] show current billing
+- [ ] configure group tag for all resources created by this tool
