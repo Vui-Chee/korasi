@@ -4,8 +4,8 @@ use aws_sdk_ec2::{
     client::Waiters,
     error::ProvideErrorMetadata,
     types::{
-        Filter, Instance, InstanceType, IpPermission, IpRange, KeyFormat, KeyPairInfo, KeyType,
-        ResourceType, SecurityGroup, Tag, TagSpecification,
+        Filter, Instance, InstanceStateName, InstanceType, IpPermission, IpRange, KeyFormat,
+        KeyPairInfo, KeyType, ResourceType, SecurityGroup, Tag, TagSpecification,
     },
     Client as EC2Client,
 };
@@ -18,6 +18,7 @@ const GLOBAL_TAG_FILTER: &str = "hpc-launcher";
 #[derive(Clone)]
 pub struct EC2Impl {
     pub client: EC2Client,
+    // TODO: group tag
 }
 
 impl EC2Impl {
@@ -38,6 +39,8 @@ impl EC2Impl {
             .key_name(name)
             .key_type(key_type)
             .key_format(key_format)
+            // TODO: tag under same group
+            .set_tag_specifications(Some(vec![]))
             .send()
             .await?;
         tracing::info!("key pair output = {:?}", output);
@@ -84,6 +87,7 @@ impl EC2Impl {
             .create_security_group()
             .group_name(name)
             .description(description)
+            // TODO: tag under same group
             .set_tag_specifications(Some(vec![]))
             .send()
             .await
@@ -258,7 +262,20 @@ impl EC2Impl {
 
     /// List instances that are "active" (non-terminated) and are tagged
     /// by this tool.
-    pub async fn describe_instance(&self) -> Result<Vec<Instance>, EC2Error> {
+    pub async fn describe_instance(
+        &self,
+        mut statuses: Vec<InstanceStateName>,
+    ) -> Result<Vec<Instance>, EC2Error> {
+        let non_terminated = vec![
+            InstanceStateName::Pending,
+            InstanceStateName::Running,
+            InstanceStateName::ShuttingDown,
+            InstanceStateName::Stopping,
+            InstanceStateName::Stopped,
+        ];
+        if statuses.is_empty() {
+            statuses = non_terminated;
+        }
         let response = self
             .client
             .describe_instances()
@@ -269,13 +286,7 @@ impl EC2Impl {
                     .build(),
                 Filter::builder()
                     .set_name(Some("instance-state-name".into()))
-                    .set_values(Some(vec![
-                        "pending".into(),
-                        "running".into(),
-                        "shutting-down".into(),
-                        "stopping".into(),
-                        "stopped".into(),
-                    ]))
+                    .set_values(Some(statuses.into_iter().map(|s| s.to_string()).collect()))
                     .build(),
             ]))
             .send()

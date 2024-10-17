@@ -1,7 +1,11 @@
-use aws_sdk_ec2::types::InstanceType;
+use std::fmt;
+use std::sync::Arc;
+
+use aws_sdk_ec2::types::{Instance, InstanceStateName, InstanceType};
 use clap::{Parser, Subcommand};
-use infra::create::CreateCommand;
 use infra::load_config;
+use infra::ssh::{exec, load_secret_key};
+use infra::{create::CreateCommand, ssh::ClientSSH};
 use inquire::{InquireError, MultiSelect, Select};
 
 use infra::ec2::{EC2Error, EC2Impl as EC2};
@@ -24,6 +28,10 @@ struct Opt {
     /// Specify path to launch script.
     #[structopt(long, default_value = "start_up.sh")]
     setup: String,
+
+    /// Path to SSH private key.
+    #[structopt(short, long, default_value = "ec2-ssh-key.pem")]
+    ssh_key: String,
 
     #[command(subcommand)]
     commands: Commands,
@@ -59,6 +67,34 @@ enum Commands {
         #[arg(long, short)]
         wait: bool,
     },
+
+    /// Upload local file(s) or directory to remote target instance.
+    ///
+    /// Uses SFTP that rides on top of SSH to transfer files.
+    Upload {
+        /// Local relative/absolute path to file(s) or directory.
+        ///
+        /// Relative takes reference from current working directory.
+        #[arg(long, short)]
+        src: String,
+
+        /// Destination file path on remote instance to upload files to.
+        #[arg(long, short)]
+        dest: String,
+    },
+
+    /// Executes a given command on remote instance.
+    Run {
+        #[arg(num_args = 1..)]
+        command: Vec<String>,
+
+        /// Set's the current working directory to execute command in.
+        /// Default path is $HOME.
+        ///
+        /// Think of it as a remote `cd`.
+        #[arg(long, short, default_value = "")]
+        path: String,
+    },
 }
 
 #[tokio::main]
@@ -68,6 +104,7 @@ async fn main() -> Result<(), EC2Error> {
         debug,
         region,
         commands,
+        ssh_key,
         ..
     } = Opt::parse();
 
@@ -98,7 +135,7 @@ async fn main() -> Result<(), EC2Error> {
                 .await?;
         }
         Commands::List => {
-            let res = ec2.describe_instance().await.unwrap();
+            let res = ec2.describe_instance(vec![]).await.unwrap();
             if res.is_empty() {
                 tracing::warn!("There are no active instances.");
                 return Ok(());
@@ -120,6 +157,49 @@ async fn main() -> Result<(), EC2Error> {
                 );
             }
         }
+        Commands::Upload { .. } => {}
+        Commands::Run { command, .. } => {
+            if command.is_empty() {
+                tracing::warn!("Please enter a command to run.");
+                return Ok(());
+            }
+
+            let chosen = select_instance(&ec2, "Choose the instance to execute remote command:")
+                .await
+                .unwrap();
+            tracing::info!("Chosen instance: {:?}", chosen);
+
+            let config = russh::client::Config::default();
+            let mut session = russh::client::connect(
+                Arc::new(config),
+                (chosen.public_dns_name.unwrap(), 22),
+                ClientSSH {},
+            )
+            .await
+            .expect("Failed to establish SSH connection with remote instance.");
+
+            let key_pair = load_secret_key(ssh_key, None).unwrap();
+
+            if session
+                .authenticate_publickey("ubuntu", Arc::new(key_pair))
+                .await
+                .unwrap()
+            {
+                tracing::info!("Successful auth");
+
+                exec(
+                    session,
+                    &command
+                        .into_iter()
+                        // arguments are escaped manually since the SSH protocol doesn't support quoting
+                        .map(|cmd_part| shell_escape::escape(cmd_part.into()))
+                        .collect::<Vec<_>>()
+                        .join(" "),
+                )
+                .await
+                .unwrap();
+            }
+        }
         remaining => {
             let chosen = multi_select_instances(&ec2, "Choose the instance(s):").await;
 
@@ -132,8 +212,10 @@ async fn main() -> Result<(), EC2Error> {
                     if let Commands::Delete { wait } = remaining {
                         ec2.delete_instances(&instance_ids, wait).await?;
                     } else if let Commands::Start = remaining {
+                        // TODO: can only start instances that are stopped.
                         ec2.start_instances(&instance_ids).await?;
                     } else if let Commands::Stop { wait } = remaining {
+                        // TODO: Can only stop instances that are running.
                         ec2.stop_instances(&instance_ids, wait).await?;
                     }
                 }
@@ -147,35 +229,73 @@ async fn main() -> Result<(), EC2Error> {
 }
 
 /// Express list of instance ids as a comma separated string.
-fn ids_to_str(ids: Vec<String>) -> String {
+fn ids_to_str(ids: Vec<SelectOption>) -> String {
     ids.iter()
-        .map(|x| x.split(":").collect::<Vec<_>>()[1])
+        .map(|i| i.instance_id.to_owned())
         .collect::<Vec<_>>()
         .join(",")
 }
 
-async fn multi_select_instances(ec2: &EC2, prompt: &str) -> Result<Vec<String>, InquireError> {
+async fn multi_select_instances(
+    ec2: &EC2,
+    prompt: &str,
+) -> Result<Vec<SelectOption>, InquireError> {
     // Get all instances tagged by this tool.
-    let instances = ec2.describe_instance().await.unwrap();
-
-    let options: Vec<_> = instances
-        .iter()
-        .map(|i| {
-            let mut name = "";
-            let status = i.state().unwrap().name().unwrap();
-            for t in i.tags() {
-                if t.key() == Some("Name") {
-                    name = t.value().unwrap();
-                }
-            }
-            if name.is_empty() {
-                name = "(empty)";
-            }
-            format!("{}:{}:{}", name, i.instance_id().unwrap(), status)
-        })
-        .collect();
+    let instances = ec2.describe_instance(vec![]).await.unwrap();
+    let options: Vec<SelectOption> = instances.into_iter().map(|i| i.into()).collect();
 
     MultiSelect::new(prompt, options)
         .with_vim_mode(true)
         .prompt()
+}
+
+async fn select_instance(ec2: &EC2, prompt: &str) -> Result<SelectOption, InquireError> {
+    let instances = ec2
+        .describe_instance(vec![InstanceStateName::Running])
+        .await
+        .unwrap();
+    let options: Vec<SelectOption> = instances.into_iter().map(|i| i.into()).collect();
+
+    if options.len() == 1 {
+        return Ok(options[0].to_owned());
+    }
+    Select::new(prompt, options).with_vim_mode(true).prompt()
+}
+
+#[derive(Debug, Default, Clone)]
+struct SelectOption {
+    name: String,
+    instance_id: String,
+    public_dns_name: Option<String>,
+    state: Option<InstanceStateName>,
+}
+
+impl fmt::Display for SelectOption {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let status = self.state.as_ref().unwrap().clone();
+        write!(
+            f,
+            "name = {}, instance_id = {}, status = {}",
+            self.name, self.instance_id, status
+        )
+    }
+}
+
+impl From<Instance> for SelectOption {
+    fn from(value: Instance) -> Self {
+        let mut opt = SelectOption {
+            state: value.state().unwrap().name().cloned(),
+            instance_id: value.instance_id().unwrap().to_string(),
+            public_dns_name: value.public_dns_name().map(str::to_string),
+            ..SelectOption::default()
+        };
+
+        for t in value.tags() {
+            if t.key() == Some("Name") {
+                opt.name = t.value().unwrap().to_owned();
+            }
+        }
+
+        opt
+    }
 }
