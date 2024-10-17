@@ -205,33 +205,36 @@ async fn main() -> Result<(), EC2Error> {
             }
         }
         Commands::Delete { wait } => {
-            let chosen = multi_select_instances(&ec2, "Choose the instance(s):", vec![])
-                .await
-                .unwrap();
-            let instance_ids = ids_to_str(chosen);
-            ec2.delete_instances(&instance_ids, wait).await?;
+            if let Ok(chosen) =
+                multi_select_instances(&ec2, "Choose the instance(s):", vec![]).await
+            {
+                let instance_ids = ids_to_str(chosen);
+                ec2.delete_instances(&instance_ids, wait).await?;
+            }
         }
         Commands::Start => {
-            let chosen = multi_select_instances(
+            if let Ok(chosen) = multi_select_instances(
                 &ec2,
                 "Choose the instance(s):",
                 vec![InstanceStateName::Stopped],
             )
             .await
-            .unwrap();
-            let instance_ids = ids_to_str(chosen);
-            ec2.start_instances(&instance_ids).await?;
+            {
+                let instance_ids = ids_to_str(chosen);
+                ec2.start_instances(&instance_ids).await?;
+            }
         }
         Commands::Stop { wait } => {
-            let chosen = multi_select_instances(
+            if let Ok(chosen) = multi_select_instances(
                 &ec2,
                 "Choose the instance(s):",
                 vec![InstanceStateName::Running],
             )
             .await
-            .unwrap();
-            let instance_ids = ids_to_str(chosen);
-            ec2.stop_instances(&instance_ids, wait).await?;
+            {
+                let instance_ids = ids_to_str(chosen);
+                ec2.stop_instances(&instance_ids, wait).await?;
+            }
         }
     };
 
