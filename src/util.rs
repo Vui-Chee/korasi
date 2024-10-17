@@ -128,9 +128,10 @@ pub fn ids_to_str(ids: Vec<SelectOption>) -> String {
 pub async fn multi_select_instances(
     ec2: &EC2,
     prompt: &str,
+    statuses: Vec<InstanceStateName>,
 ) -> Result<Vec<SelectOption>, InquireError> {
     // Get all instances tagged by this tool.
-    let instances = ec2.describe_instance(vec![]).await.unwrap();
+    let instances = ec2.describe_instance(statuses).await.unwrap();
     let options: Vec<SelectOption> = instances.into_iter().map(|i| i.into()).collect();
 
     MultiSelect::new(prompt, options)
@@ -138,11 +139,12 @@ pub async fn multi_select_instances(
         .prompt()
 }
 
-pub async fn select_instance(ec2: &EC2, prompt: &str) -> Result<SelectOption, InquireError> {
-    let instances = ec2
-        .describe_instance(vec![InstanceStateName::Running])
-        .await
-        .unwrap();
+pub async fn select_instance(
+    ec2: &EC2,
+    prompt: &str,
+    statuses: Vec<InstanceStateName>,
+) -> Result<SelectOption, InquireError> {
+    let instances = ec2.describe_instance(statuses).await.unwrap();
     let options: Vec<SelectOption> = instances.into_iter().map(|i| i.into()).collect();
 
     if options.len() == 1 {

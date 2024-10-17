@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use aws_sdk_ec2::types::InstanceType;
+use aws_sdk_ec2::types::{InstanceStateName, InstanceType};
 use clap::{Parser, Subcommand};
 use infra::load_config;
 use infra::ssh::{exec, load_secret_key};
@@ -164,9 +164,13 @@ async fn main() -> Result<(), EC2Error> {
                 return Ok(());
             }
 
-            let chosen = select_instance(&ec2, "Choose the instance to execute remote command:")
-                .await
-                .unwrap();
+            let chosen = select_instance(
+                &ec2,
+                "Choose running instance to execute remote command:",
+                vec![InstanceStateName::Running],
+            )
+            .await
+            .unwrap();
             tracing::info!("Chosen instance: {:?}", chosen);
 
             let config = russh::client::Config::default();
@@ -200,28 +204,34 @@ async fn main() -> Result<(), EC2Error> {
                 .unwrap();
             }
         }
-        remaining => {
-            let chosen = multi_select_instances(&ec2, "Choose the instance(s):").await;
-
-            if let Ok(chosen) = chosen {
-                if chosen.is_empty() {
-                    tracing::warn!("No instance was selected.");
-                } else {
-                    let instance_ids = ids_to_str(chosen);
-
-                    if let Commands::Delete { wait } = remaining {
-                        ec2.delete_instances(&instance_ids, wait).await?;
-                    } else if let Commands::Start = remaining {
-                        // TODO: can only start instances that are stopped.
-                        ec2.start_instances(&instance_ids).await?;
-                    } else if let Commands::Stop { wait } = remaining {
-                        // TODO: Can only stop instances that are running.
-                        ec2.stop_instances(&instance_ids, wait).await?;
-                    }
-                }
-            } else {
-                tracing::warn!("No active instances.");
-            }
+        Commands::Delete { wait } => {
+            let chosen = multi_select_instances(&ec2, "Choose the instance(s):", vec![])
+                .await
+                .unwrap();
+            let instance_ids = ids_to_str(chosen);
+            ec2.delete_instances(&instance_ids, wait).await?;
+        }
+        Commands::Start => {
+            let chosen = multi_select_instances(
+                &ec2,
+                "Choose the instance(s):",
+                vec![InstanceStateName::Stopped],
+            )
+            .await
+            .unwrap();
+            let instance_ids = ids_to_str(chosen);
+            ec2.start_instances(&instance_ids).await?;
+        }
+        Commands::Stop { wait } => {
+            let chosen = multi_select_instances(
+                &ec2,
+                "Choose the instance(s):",
+                vec![InstanceStateName::Running],
+            )
+            .await
+            .unwrap();
+            let instance_ids = ids_to_str(chosen);
+            ec2.stop_instances(&instance_ids, wait).await?;
         }
     };
 
