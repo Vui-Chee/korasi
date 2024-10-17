@@ -134,6 +134,9 @@ pub async fn multi_select_instances(
     let instances = ec2.describe_instance(statuses).await.unwrap();
     let options: Vec<SelectOption> = instances.into_iter().map(|i| i.into()).collect();
 
+    if options.len() == 1 {
+        return Ok(vec![options[0].to_owned()]);
+    }
     MultiSelect::new(prompt, options)
         .with_vim_mode(true)
         .prompt()
