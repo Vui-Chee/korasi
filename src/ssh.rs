@@ -1,4 +1,4 @@
-use std::{io::Read, path::Path};
+use std::{io::Read, path::Path, sync::Arc};
 
 use async_trait::async_trait;
 use russh::{
@@ -42,6 +42,24 @@ pub fn load_secret_key<P: AsRef<Path>>(
     let mut secret = String::new();
     secret_file.read_to_string(&mut secret)?;
     Ok(decode_secret_key(&secret, password)?)
+}
+
+pub async fn connect(
+    public_dns_name: String,
+    ssh_key: String,
+) -> anyhow::Result<Handle<ClientSSH>> {
+    let config = russh::client::Config::default();
+    let mut session = russh::client::connect(Arc::new(config), (public_dns_name, 22), ClientSSH {})
+        .await
+        .expect("Failed to establish SSH connection with remote instance.");
+    let key_pair = load_secret_key(ssh_key, None).unwrap();
+
+    session
+        // TODO: Do not hardcode user
+        .authenticate_publickey("ubuntu", Arc::new(key_pair))
+        .await?;
+
+    Ok(session)
 }
 
 pub async fn exec(session: Handle<ClientSSH>, command: &str) -> anyhow::Result<u32> {

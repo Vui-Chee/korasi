@@ -1,14 +1,16 @@
-use std::sync::Arc;
+use std::path::PathBuf;
 
 use aws_sdk_ec2::types::{InstanceStateName, InstanceType};
 use clap::{Parser, Subcommand};
-use infra::load_config;
-use infra::ssh::{exec, load_secret_key};
-use infra::util::{ids_to_str, multi_select_instances, select_instance};
-use infra::{create::CreateCommand, ssh::ClientSSH};
+use ignore::Walk;
 use inquire::Select;
+use russh_sftp::client::SftpSession;
 
-use infra::ec2::{EC2Error, EC2Impl as EC2};
+use infra::create::CreateCommand;
+use infra::ec2::EC2Impl as EC2;
+use infra::load_config;
+use infra::ssh::{connect, exec};
+use infra::util::{ids_to_str, multi_select_instances, select_instance};
 
 #[derive(Debug, Parser)]
 #[command(arg_required_else_help = true)]
@@ -74,16 +76,26 @@ enum Commands {
     Upload {
         /// Local relative/absolute path to file(s) or directory.
         ///
-        /// Relative takes reference from current working directory.
-        #[arg(long, short)]
-        src: String,
+        /// If no `src` is specified, then files within with current
+        /// working directory will be uploaded to $HOME of remote.
+        #[arg(index = 1)]
+        src: Option<String>,
 
         /// Destination file path on remote instance to upload files to.
-        #[arg(long, short)]
-        dest: String,
+        ///
+        /// If no dst is specified, files will be uploaded the $HOME
+        /// directory of remote.
+        #[arg(index = 2)]
+        dst: Option<String>,
     },
 
     /// Executes a given command on remote instance.
+    ///
+    /// Only run commands that are non-blocking. Commands like
+    /// opening `vi` does not working at the moment.
+    ///
+    /// TODO: enable blocking commands to function from local.
+    /// eg. open a remote file using `vi`
     Run {
         #[arg(num_args = 1..)]
         command: Vec<String>,
@@ -98,7 +110,7 @@ enum Commands {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), EC2Error> {
+async fn main() -> anyhow::Result<()> {
     let Opt {
         profile,
         debug,
@@ -189,7 +201,52 @@ async fn main() -> Result<(), EC2Error> {
                 ec2.stop_instances(&instance_ids, wait).await?;
             }
         }
-        Commands::Upload { .. } => {}
+        Commands::Upload { src, dst } => {
+            tracing::info!("{:?}, {:?}", src, dst);
+
+            let chosen = select_instance(
+                &ec2,
+                "Choose running instance to upload files to:",
+                vec![InstanceStateName::Running],
+            )
+            .await
+            .unwrap();
+            tracing::info!("Chosen instance: {:?}", chosen);
+
+            let session = connect(chosen.public_dns_name.unwrap(), ssh_key).await;
+
+            if let Ok(session) = session {
+                tracing::info!("Successful auth");
+
+                let channel = session.channel_open_session().await.unwrap();
+                channel.request_subsystem(true, "sftp").await.unwrap();
+                let sftp = SftpSession::new(channel.into_stream()).await.unwrap();
+                tracing::info!(
+                    "current remote path: {:?}",
+                    sftp.canonicalize(".").await.unwrap()
+                );
+
+                let p = std::fs::canonicalize(".")?;
+                let mut components = p.components();
+                let root = components.next_back();
+                let prefix = PathBuf::from(components.as_path());
+
+                tracing::info!("root = {:?}", root);
+                tracing::info!("prefix = {:?}", prefix);
+
+                for result in Walk::new("./") {
+                    // Each item yielded by the iterator is either a directory entry or an
+                    // error, so either print the path or the error.
+                    match result {
+                        Ok(entry) => {
+                            let data = entry.metadata();
+                            tracing::info!("{}", entry.path().display());
+                        }
+                        Err(err) => tracing::error!("ERROR: {}", err),
+                    }
+                }
+            }
+        }
         Commands::Run { command, .. } => {
             if command.is_empty() {
                 tracing::warn!("Please enter a command to run.");
@@ -205,22 +262,9 @@ async fn main() -> Result<(), EC2Error> {
             .unwrap();
             tracing::info!("Chosen instance: {:?}", chosen);
 
-            let config = russh::client::Config::default();
-            let mut session = russh::client::connect(
-                Arc::new(config),
-                (chosen.public_dns_name.unwrap(), 22),
-                ClientSSH {},
-            )
-            .await
-            .expect("Failed to establish SSH connection with remote instance.");
+            let session = connect(chosen.public_dns_name.unwrap(), ssh_key).await;
 
-            let key_pair = load_secret_key(ssh_key, None).unwrap();
-
-            if session
-                .authenticate_publickey("ubuntu", Arc::new(key_pair))
-                .await
-                .unwrap()
-            {
+            if let Ok(session) = session {
                 tracing::info!("Successful auth");
 
                 exec(
