@@ -1,12 +1,12 @@
-use std::fmt;
 use std::sync::Arc;
 
-use aws_sdk_ec2::types::{Instance, InstanceStateName, InstanceType};
+use aws_sdk_ec2::types::InstanceType;
 use clap::{Parser, Subcommand};
 use infra::load_config;
 use infra::ssh::{exec, load_secret_key};
+use infra::util::{ids_to_str, multi_select_instances, select_instance};
 use infra::{create::CreateCommand, ssh::ClientSSH};
-use inquire::{InquireError, MultiSelect, Select};
+use inquire::Select;
 
 use infra::ec2::{EC2Error, EC2Impl as EC2};
 
@@ -226,76 +226,4 @@ async fn main() -> Result<(), EC2Error> {
     };
 
     Ok(())
-}
-
-/// Express list of instance ids as a comma separated string.
-fn ids_to_str(ids: Vec<SelectOption>) -> String {
-    ids.iter()
-        .map(|i| i.instance_id.to_owned())
-        .collect::<Vec<_>>()
-        .join(",")
-}
-
-async fn multi_select_instances(
-    ec2: &EC2,
-    prompt: &str,
-) -> Result<Vec<SelectOption>, InquireError> {
-    // Get all instances tagged by this tool.
-    let instances = ec2.describe_instance(vec![]).await.unwrap();
-    let options: Vec<SelectOption> = instances.into_iter().map(|i| i.into()).collect();
-
-    MultiSelect::new(prompt, options)
-        .with_vim_mode(true)
-        .prompt()
-}
-
-async fn select_instance(ec2: &EC2, prompt: &str) -> Result<SelectOption, InquireError> {
-    let instances = ec2
-        .describe_instance(vec![InstanceStateName::Running])
-        .await
-        .unwrap();
-    let options: Vec<SelectOption> = instances.into_iter().map(|i| i.into()).collect();
-
-    if options.len() == 1 {
-        return Ok(options[0].to_owned());
-    }
-    Select::new(prompt, options).with_vim_mode(true).prompt()
-}
-
-#[derive(Debug, Default, Clone)]
-struct SelectOption {
-    name: String,
-    instance_id: String,
-    public_dns_name: Option<String>,
-    state: Option<InstanceStateName>,
-}
-
-impl fmt::Display for SelectOption {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let status = self.state.as_ref().unwrap().clone();
-        write!(
-            f,
-            "name = {}, instance_id = {}, status = {}",
-            self.name, self.instance_id, status
-        )
-    }
-}
-
-impl From<Instance> for SelectOption {
-    fn from(value: Instance) -> Self {
-        let mut opt = SelectOption {
-            state: value.state().unwrap().name().cloned(),
-            instance_id: value.instance_id().unwrap().to_string(),
-            public_dns_name: value.public_dns_name().map(str::to_string),
-            ..SelectOption::default()
-        };
-
-        for t in value.tags() {
-            if t.key() == Some("Name") {
-                opt.name = t.value().unwrap().to_owned();
-            }
-        }
-
-        opt
-    }
 }
