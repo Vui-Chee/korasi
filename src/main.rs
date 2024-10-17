@@ -157,6 +157,38 @@ async fn main() -> Result<(), EC2Error> {
                 );
             }
         }
+        Commands::Delete { wait } => {
+            if let Ok(chosen) =
+                multi_select_instances(&ec2, "Choose the instance(s):", vec![]).await
+            {
+                let instance_ids = ids_to_str(chosen);
+                ec2.delete_instances(&instance_ids, wait).await?;
+            }
+        }
+        Commands::Start => {
+            if let Ok(chosen) = multi_select_instances(
+                &ec2,
+                "Choose the instance(s):",
+                vec![InstanceStateName::Stopped],
+            )
+            .await
+            {
+                let instance_ids = ids_to_str(chosen);
+                ec2.start_instances(&instance_ids).await?;
+            }
+        }
+        Commands::Stop { wait } => {
+            if let Ok(chosen) = multi_select_instances(
+                &ec2,
+                "Choose the instance(s):",
+                vec![InstanceStateName::Running],
+            )
+            .await
+            {
+                let instance_ids = ids_to_str(chosen);
+                ec2.stop_instances(&instance_ids, wait).await?;
+            }
+        }
         Commands::Upload { .. } => {}
         Commands::Run { command, .. } => {
             if command.is_empty() {
@@ -202,38 +234,6 @@ async fn main() -> Result<(), EC2Error> {
                 )
                 .await
                 .unwrap();
-            }
-        }
-        Commands::Delete { wait } => {
-            if let Ok(chosen) =
-                multi_select_instances(&ec2, "Choose the instance(s):", vec![]).await
-            {
-                let instance_ids = ids_to_str(chosen);
-                ec2.delete_instances(&instance_ids, wait).await?;
-            }
-        }
-        Commands::Start => {
-            if let Ok(chosen) = multi_select_instances(
-                &ec2,
-                "Choose the instance(s):",
-                vec![InstanceStateName::Stopped],
-            )
-            .await
-            {
-                let instance_ids = ids_to_str(chosen);
-                ec2.start_instances(&instance_ids).await?;
-            }
-        }
-        Commands::Stop { wait } => {
-            if let Ok(chosen) = multi_select_instances(
-                &ec2,
-                "Choose the instance(s):",
-                vec![InstanceStateName::Running],
-            )
-            .await
-            {
-                let instance_ids = ids_to_str(chosen);
-                ec2.stop_instances(&instance_ids, wait).await?;
             }
         }
     };
