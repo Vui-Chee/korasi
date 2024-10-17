@@ -81,7 +81,7 @@ enum Commands {
         #[arg(index = 1)]
         src: Option<String>,
 
-        /// Destination file path on remote instance to upload files to.
+        /// Destination folder path on remote instance to upload files to.
         ///
         /// If no dst is specified, files will be uploaded the $HOME
         /// directory of remote.
@@ -94,10 +94,15 @@ enum Commands {
     /// Only run commands that are non-blocking. Commands like
     /// opening `vi` does not working at the moment.
     ///
+    /// TODO: Allow client to send commands (read stdin) via SSH channel.
+    /// eg. impt for sudo prompts
+    ///
     /// TODO: enable blocking commands to function from local.
     /// eg. open a remote file using `vi`
+    ///
+    /// TODO: run cmd from target directory.
     Run {
-        #[arg(num_args = 1..)]
+        #[arg(allow_hyphen_values = true, num_args = 1..)]
         command: Vec<String>,
 
         /// Set's the current working directory to execute command in.
@@ -216,31 +221,71 @@ async fn main() -> anyhow::Result<()> {
             let session = connect(chosen.public_dns_name.unwrap(), ssh_key).await;
 
             if let Ok(session) = session {
-                tracing::info!("Successful auth");
-
                 let channel = session.channel_open_session().await.unwrap();
                 channel.request_subsystem(true, "sftp").await.unwrap();
+
                 let sftp = SftpSession::new(channel.into_stream()).await.unwrap();
-                tracing::info!(
-                    "current remote path: {:?}",
-                    sftp.canonicalize(".").await.unwrap()
-                );
 
-                let p = std::fs::canonicalize(".")?;
-                let mut components = p.components();
-                let root = components.next_back();
+                let src_path = std::fs::canonicalize(src.unwrap_or(".".into()))?;
+                let mut components = src_path.components();
+                let root_folder = components
+                    .next_back()
+                    .unwrap()
+                    .as_os_str()
+                    .to_str()
+                    .unwrap_or(".");
                 let prefix = PathBuf::from(components.as_path());
+                let dst_folder =
+                    PathBuf::from(dst.as_ref().unwrap_or(&".".into())).join(root_folder);
 
-                tracing::info!("root = {:?}", root);
+                // Only create root folder, skip if any error occurred.
+                let create_root_dir = sftp
+                    .create_dir(dst_folder.to_str().unwrap().to_owned())
+                    .await;
+
+                tracing::warn!("create_root_dir = {:?}", create_root_dir);
+                tracing::info!("root = {:?}", root_folder);
+                tracing::info!("remote dst = {:?}", dst_folder);
                 tracing::info!("prefix = {:?}", prefix);
 
-                for result in Walk::new("./") {
-                    // Each item yielded by the iterator is either a directory entry or an
-                    // error, so either print the path or the error.
+                let dst_exists = sftp
+                    .try_exists(dst_folder.to_str().unwrap().to_owned())
+                    .await?;
+                if !dst_exists {
+                    tracing::warn!("Remote dst folder does not exist. Aborting upload.");
+                    return Ok(());
+                }
+
+                // The .gitignore at src_path will be respected.
+                for result in Walk::new(src_path) {
                     match result {
                         Ok(entry) => {
                             let data = entry.metadata();
-                            tracing::info!("{}", entry.path().display());
+
+                            let mut abs_local_pth = entry
+                                .path()
+                                .to_str()
+                                .unwrap()
+                                .strip_prefix(prefix.to_str().unwrap_or(""))
+                                .unwrap()
+                                .chars();
+                            abs_local_pth.next();
+                            let rel_pth = abs_local_pth.as_str();
+                            if let Some(ref _dst) = dst {
+                                // rel_pth = &format!("");
+                            }
+                            tracing::info!("dst = {:?}, rel_pth = {:?}", dst, rel_pth);
+
+                            // TODO: Attach remote dst folder path to rel_pth.
+
+                            // (dst + root) + pth
+                            if let Ok(data) = data {
+                                if data.is_dir() {
+                                    // WRONG: abs path to where directory will be created.
+                                    let _ = sftp.create_dir(rel_pth).await;
+                                } else {
+                                }
+                            }
                         }
                         Err(err) => tracing::error!("ERROR: {}", err),
                     }
@@ -265,8 +310,6 @@ async fn main() -> anyhow::Result<()> {
             let session = connect(chosen.public_dns_name.unwrap(), ssh_key).await;
 
             if let Ok(session) = session {
-                tracing::info!("Successful auth");
-
                 exec(
                     session,
                     &command
