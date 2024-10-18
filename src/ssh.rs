@@ -6,7 +6,10 @@ use russh::{
     keys::{decode_secret_key, key},
     ChannelId, ChannelMsg,
 };
+use russh_sftp::client::SftpSession;
 use tokio::io::AsyncWriteExt;
+
+use crate::util::calc_prefix;
 
 pub struct ClientSSH;
 
@@ -94,4 +97,45 @@ pub async fn exec(session: Handle<ClientSSH>, command: &str) -> anyhow::Result<u
         }
     }
     Ok(code.expect("program did not exit cleanly"))
+}
+
+pub async fn upload(
+    sftp: SftpSession,
+    src: Option<String>,
+    dst: Option<String>,
+) -> anyhow::Result<()> {
+    let src_path = match std::fs::canonicalize(src.unwrap_or(".".into())) {
+        Ok(pth) => pth,
+        Err(err) => {
+            tracing::error!("Failed to canonicalize src = {err}");
+            return Ok(());
+        }
+    };
+    let _prefix = calc_prefix(src_path.clone())?;
+
+    if dst.is_some() {
+        match sftp.metadata(dst.as_ref().unwrap_or(&".".into())).await {
+            Ok(attr) => {
+                if !attr.is_dir() {
+                    panic!("Dst must be a dir!");
+                }
+            }
+            Err(err) => {
+                tracing::error!("Error remote metadata = {err}");
+                return Ok(());
+            }
+        }
+    }
+
+    let _dst_abs_path = sftp
+        .canonicalize(&dst.unwrap_or(".".into()))
+        .await
+        .expect("Failed to canonicalize remote dst.");
+
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    //
 }

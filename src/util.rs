@@ -3,10 +3,12 @@
 use std::{
     fmt::{self, Display},
     io::Write,
-    path::PathBuf,
+    iter::Map,
+    path::{Path, PathBuf},
 };
 
 use aws_sdk_ec2::types::{Image, Instance, InstanceStateName};
+use ignore::Walk;
 use inquire::{InquireError, MultiSelect, Select};
 
 use crate::ec2::{EC2Error, EC2Impl as EC2};
@@ -156,11 +158,56 @@ pub async fn select_instance(
     Select::new(prompt, options).with_vim_mode(true).prompt()
 }
 
-#[cfg(test)]
-mod ec2 {
-    use std::{fs::remove_file, path::Path};
+pub fn calc_prefix(pth: PathBuf) -> std::io::Result<PathBuf> {
+    Ok(pth.parent().unwrap_or(Path::new("")).to_path_buf())
+}
 
-    use super::open_file_with_perm;
+pub fn biject_paths<'a>(
+    src_path: &str,
+    prefix: &'a str,
+    dst_folder: &'a str,
+) -> Map<
+    Walk,
+    impl FnMut(
+            Result<ignore::DirEntry, ignore::Error>,
+        ) -> Result<(PathBuf, PathBuf, bool), ignore::Error>
+        + 'a,
+> {
+    Walk::new(src_path).map(move |result| match result {
+        Ok(entry) => {
+            let is_dir = match entry.metadata() {
+                Ok(ent) => ent.is_dir(),
+                _ => false,
+            };
+            let local_pth = entry.path().to_path_buf();
+            let mut rel_pth = entry
+                .path()
+                .to_str()
+                .unwrap()
+                .strip_prefix(prefix)
+                .unwrap()
+                .chars();
+            rel_pth.next();
+            let transformed = PathBuf::from(dst_folder).join(rel_pth.as_str());
+
+            tracing::info!("path = {:?}", transformed);
+
+            Ok((local_pth, transformed, is_dir))
+        }
+        Err(err) => Err(err),
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{
+        fs::remove_file,
+        path::{Path, PathBuf},
+    };
+
+    use crate::util::biject_paths;
+
+    use super::{calc_prefix, open_file_with_perm};
 
     #[test]
     fn open_readonly_file() {
@@ -176,9 +223,69 @@ mod ec2 {
             meta.permissions().readonly(),
             "ssh PK file should be readonly."
         );
-        assert!(
-            remove_file(pk_file).is_ok(),
-            "Failed to remove test pk file."
-        );
+        let _ = remove_file(pk_file);
+    }
+
+    #[test]
+    fn calc_src_prefix() {
+        let _ = std::fs::remove_dir("../outside-cwd");
+
+        let cwd = std::env::current_dir().unwrap();
+        std::fs::create_dir("../outside-cwd").unwrap();
+
+        let cases = [
+            ("/", PathBuf::from("")),
+            ("features.md", cwd.clone()),
+            ("src/main.rs", cwd.join("src")),
+            ("../outside-cwd", cwd.parent().unwrap().to_path_buf()),
+        ];
+
+        for (input, expected) in cases {
+            let canon_pth = std::fs::canonicalize(input).unwrap();
+            let got = calc_prefix(canon_pth);
+            assert!(
+                got.is_ok(),
+                "Failed to canonicalize path = {}, Err = {}",
+                input,
+                got.unwrap_err()
+            );
+            pretty_assertions::assert_eq!(got.unwrap(), expected);
+        }
+
+        std::fs::remove_dir("../outside-cwd").unwrap();
+    }
+
+    #[test]
+    fn calc_remote_paths() {
+        let cwd = std::env::current_dir().unwrap();
+
+        let cases = [
+            (
+                // Paths are unchanged
+                cwd.as_path().to_str().unwrap(),
+                "",
+                "/home/foobar",
+            ),
+            (
+                // Paths prefixes are replaced
+                cwd.as_path().to_str().unwrap(),
+                cwd.parent().unwrap().to_str().unwrap(),
+                "/home/foobar",
+            ),
+        ];
+
+        for (x, y, z) in cases {
+            for result in biject_paths(x, y, z) {
+                match result {
+                    Ok(entry) => {
+                        println!("entry = {:?}", entry);
+                    }
+                    Err(err) => {
+                        println!("err = {}", err);
+                    }
+                }
+            }
+            println!();
+        }
     }
 }
