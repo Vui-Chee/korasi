@@ -215,24 +215,27 @@ async fn main() -> anyhow::Result<()> {
             }
         }
         Commands::Upload { src, dst } => {
-            let chosen = select_instance(
+            if let Ok(chosen) = select_instance(
                 &ec2,
                 "Choose running instance to upload files to:",
                 vec![InstanceStateName::Running],
             )
             .await
-            .unwrap();
-            tracing::info!("Chosen instance: {} = {}", chosen.name, chosen.instance_id);
+            {
+                tracing::info!("Chosen instance: {} = {}", chosen.name, chosen.instance_id);
 
-            let session = connect(chosen.public_dns_name.unwrap(), ssh_key).await;
+                let session = connect(chosen.public_dns_name.unwrap(), ssh_key).await;
 
-            if let Ok(session) = session {
-                let channel = session.channel_open_session().await.unwrap();
-                channel.request_subsystem(true, "sftp").await.unwrap();
+                if let Ok(session) = session {
+                    let channel = session.channel_open_session().await.unwrap();
+                    channel.request_subsystem(true, "sftp").await.unwrap();
 
-                let sftp = SftpSession::new(channel.into_stream()).await.unwrap();
+                    let sftp = SftpSession::new(channel.into_stream()).await.unwrap();
 
-                upload(sftp, src, dst).await?;
+                    upload(sftp, src, dst).await?;
+                }
+            } else {
+                tracing::warn!("No active running instances to upload to.");
             }
         }
         Commands::Run { command, .. } => {
