@@ -81,8 +81,8 @@ impl Display for ScenarioImage {
 
 #[derive(Debug, Default, Clone)]
 pub struct SelectOption {
-    name: String,
-    instance_id: String,
+    pub name: String,
+    pub instance_id: String,
     pub public_dns_name: Option<String>,
     state: Option<InstanceStateName>,
 }

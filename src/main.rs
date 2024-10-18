@@ -1,3 +1,5 @@
+use std::fs::File;
+use std::io::Read;
 use std::path::PathBuf;
 
 use aws_sdk_ec2::types::{InstanceStateName, InstanceType};
@@ -11,6 +13,8 @@ use infra::ec2::EC2Impl as EC2;
 use infra::load_config;
 use infra::ssh::{connect, exec};
 use infra::util::{ids_to_str, multi_select_instances, select_instance};
+use russh_sftp::protocol::OpenFlags;
+use tokio::io::AsyncWriteExt;
 
 #[derive(Debug, Parser)]
 #[command(arg_required_else_help = true)]
@@ -224,7 +228,7 @@ async fn main() -> anyhow::Result<()> {
             )
             .await
             .unwrap();
-            tracing::info!("Chosen instance: {:?}", chosen);
+            tracing::info!("Chosen instance: {} = {}", chosen.name, chosen.instance_id);
 
             let session = connect(chosen.public_dns_name.unwrap(), ssh_key).await;
 
@@ -234,7 +238,8 @@ async fn main() -> anyhow::Result<()> {
 
                 let sftp = SftpSession::new(channel.into_stream()).await.unwrap();
 
-                let src_path = std::fs::canonicalize(src.unwrap_or(".".into()))?;
+                let src_path = std::fs::canonicalize(src.unwrap_or(".".into()))
+                    .expect("Failed to canonicalize src_path");
                 let mut components = src_path.components();
                 let root_folder = components
                     .next_back()
@@ -243,55 +248,74 @@ async fn main() -> anyhow::Result<()> {
                     .to_str()
                     .unwrap_or(".");
                 let prefix = PathBuf::from(components.as_path());
-                let dst_folder =
-                    PathBuf::from(dst.as_ref().unwrap_or(&".".into())).join(root_folder);
+                let dst_folder = PathBuf::from(dst.as_ref().unwrap_or(&".".into()));
 
-                // Only create root folder, skip if any error occurred.
-                let create_root_dir = sftp
-                    .create_dir(dst_folder.to_str().unwrap().to_owned())
-                    .await;
-
-                tracing::warn!("create_root_dir = {:?}", create_root_dir);
                 tracing::info!("root = {:?}", root_folder);
-                tracing::info!("remote dst = {:?}", dst_folder);
+                tracing::info!("dst_folder = {:?}", dst_folder);
                 tracing::info!("prefix = {:?}", prefix);
 
                 let dst_exists = sftp
                     .try_exists(dst_folder.to_str().unwrap().to_owned())
                     .await?;
                 if !dst_exists {
-                    tracing::warn!("Remote dst folder does not exist. Aborting upload.");
+                    tracing::warn!(
+                        "Remote dst folder ({:?}) does not exist. Aborting upload.",
+                        dst_folder
+                    );
                     return Ok(());
                 }
+                let dst_abs_path = sftp
+                    .canonicalize(&dst.unwrap_or(".".into()))
+                    .await
+                    .expect("Failed to canonicalize remote dst.");
+                tracing::info!("remote dst = {:?}", dst_abs_path);
 
                 // The .gitignore at src_path will be respected.
                 for result in Walk::new(src_path) {
                     match result {
                         Ok(entry) => {
                             let data = entry.metadata();
+                            let local_path = entry.path();
 
-                            let mut abs_local_pth = entry
+                            let mut rel_pth = entry
                                 .path()
                                 .to_str()
                                 .unwrap()
                                 .strip_prefix(prefix.to_str().unwrap_or(""))
                                 .unwrap()
                                 .chars();
-                            abs_local_pth.next();
-                            let rel_pth = abs_local_pth.as_str();
-                            if let Some(ref _dst) = dst {
-                                // rel_pth = &format!("");
-                            }
-                            tracing::info!("dst = {:?}, rel_pth = {:?}", dst, rel_pth);
+                            rel_pth.next();
+                            let rel_pth = rel_pth.as_str();
+                            let combined = PathBuf::from(dst_abs_path.clone()).join(rel_pth);
+                            tracing::info!("upload path = {:?}", combined);
 
-                            // TODO: Attach remote dst folder path to rel_pth.
-
-                            // (dst + root) + pth
                             if let Ok(data) = data {
                                 if data.is_dir() {
-                                    // WRONG: abs path to where directory will be created.
-                                    let _ = sftp.create_dir(rel_pth).await;
+                                    let _ = sftp
+                                        .create_dir(combined.to_str().unwrap().to_owned())
+                                        .await;
                                 } else {
+                                    let open_remote_file = sftp
+                                        .open_with_flags(
+                                            combined.to_str().unwrap(),
+                                            OpenFlags::CREATE
+                                                | OpenFlags::TRUNCATE
+                                                | OpenFlags::WRITE,
+                                        )
+                                        .await;
+                                    if open_remote_file.is_err() {
+                                        tracing::warn!("Failed to open file = {:?}", combined,);
+                                    }
+
+                                    // Overwrite remote file contents with local file contents.
+                                    if let Ok(mut remote_file) = open_remote_file {
+                                        let mut local_file = File::open(local_path).unwrap();
+                                        let mut buffer = Vec::new();
+                                        local_file.read_to_end(&mut buffer).unwrap();
+                                        remote_file.write_all(buffer.as_slice()).await.unwrap();
+                                        let _ = remote_file.sync_all().await;
+                                        remote_file.shutdown().await.unwrap();
+                                    }
                                 }
                             }
                         }
@@ -313,7 +337,11 @@ async fn main() -> anyhow::Result<()> {
             )
             .await
             .unwrap();
-            tracing::info!("Chosen instance: {:?}", chosen);
+            tracing::info!(
+                "Chosen instance: name = {}, instance_id = {}",
+                chosen.name,
+                chosen.instance_id
+            );
 
             let session = connect(chosen.public_dns_name.unwrap(), ssh_key).await;
 

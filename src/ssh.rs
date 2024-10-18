@@ -18,7 +18,7 @@ impl client::Handler for ClientSSH {
         &mut self,
         server_public_key: &key::PublicKey,
     ) -> Result<bool, Self::Error> {
-        tracing::info!("check_server_key: {:?}", server_public_key);
+        tracing::debug!("check_server_key: {:?}", server_public_key);
         Ok(true)
     }
 
