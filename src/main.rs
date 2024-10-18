@@ -165,12 +165,20 @@ async fn main() -> anyhow::Result<()> {
                         name = t.value().unwrap();
                     }
                 }
+
+                let mut host = "".to_string();
+                if let Some(dns) = instance.public_dns_name() {
+                    if !dns.is_empty() {
+                        host = format!("ubuntu@{}", dns);
+                    }
+                }
+
                 tracing::info!(
-                    "{}. instance ({}) = {:?}, state = {:?}",
+                    "{}. {}, state = {:?}, {:?}",
                     i + 1,
                     name,
-                    instance.instance_id().unwrap(),
                     instance.state().unwrap().name().unwrap(),
+                    host,
                 );
             }
         }
