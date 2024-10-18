@@ -1,4 +1,4 @@
-use std::{io::Read, path::Path, sync::Arc};
+use std::{fs::File, io::Read, path::Path, sync::Arc};
 
 use async_trait::async_trait;
 use russh::{
@@ -6,10 +6,10 @@ use russh::{
     keys::{decode_secret_key, key},
     ChannelId, ChannelMsg,
 };
-use russh_sftp::client::SftpSession;
+use russh_sftp::{client::SftpSession, protocol::OpenFlags};
 use tokio::io::AsyncWriteExt;
 
-use crate::util::calc_prefix;
+use crate::util::{biject_paths, calc_prefix};
 
 pub struct ClientSSH;
 
@@ -111,7 +111,7 @@ pub async fn upload(
             return Ok(());
         }
     };
-    let _prefix = calc_prefix(src_path.clone())?;
+    let prefix = calc_prefix(src_path.clone())?;
 
     if dst.is_some() {
         match sftp.metadata(dst.as_ref().unwrap_or(&".".into())).await {
@@ -127,15 +127,46 @@ pub async fn upload(
         }
     }
 
-    let _dst_abs_path = sftp
+    let dst_abs_path = sftp
         .canonicalize(&dst.unwrap_or(".".into()))
         .await
         .expect("Failed to canonicalize remote dst.");
 
-    Ok(())
-}
+    // The .gitignore at src_path will be respected.
+    for result in biject_paths(
+        src_path.to_str().unwrap(),
+        prefix.to_str().unwrap_or(""),
+        &dst_abs_path,
+    ) {
+        match result {
+            Ok((local_pth, combined, is_dir)) => {
+                if is_dir {
+                    let _ = sftp.create_dir(combined.to_str().unwrap().to_owned()).await;
+                } else {
+                    let open_remote_file = sftp
+                        .open_with_flags(
+                            combined.to_str().unwrap(),
+                            OpenFlags::CREATE | OpenFlags::TRUNCATE | OpenFlags::WRITE,
+                        )
+                        .await;
+                    if open_remote_file.is_err() {
+                        tracing::warn!("Failed to open file = {:?}", combined,);
+                    }
 
-#[cfg(test)]
-mod tests {
-    //
+                    // Overwrite remote file contents with local file contents.
+                    if let Ok(mut remote_file) = open_remote_file {
+                        let mut local_file = File::open(local_pth).unwrap();
+                        let mut buffer = Vec::new();
+                        local_file.read_to_end(&mut buffer).unwrap();
+                        remote_file.write_all(buffer.as_slice()).await.unwrap();
+                        let _ = remote_file.sync_all().await;
+                        remote_file.shutdown().await.unwrap();
+                    }
+                }
+            }
+            Err(err) => tracing::error!("ERROR: {}", err),
+        }
+    }
+
+    Ok(())
 }

@@ -1,6 +1,3 @@
-use std::fs::File;
-use std::io::Read;
-
 use aws_sdk_ec2::types::{InstanceStateName, InstanceType};
 use clap::{Parser, Subcommand};
 use inquire::Select;
@@ -9,10 +6,8 @@ use russh_sftp::client::SftpSession;
 use infra::create::CreateCommand;
 use infra::ec2::EC2Impl as EC2;
 use infra::load_config;
-use infra::ssh::{connect, exec};
-use infra::util::{biject_paths, calc_prefix, ids_to_str, multi_select_instances, select_instance};
-use russh_sftp::protocol::OpenFlags;
-use tokio::io::AsyncWriteExt;
+use infra::ssh::{connect, exec, upload};
+use infra::util::{ids_to_str, multi_select_instances, select_instance};
 
 #[derive(Debug, Parser)]
 #[command(arg_required_else_help = true)]
@@ -236,70 +231,8 @@ async fn main() -> anyhow::Result<()> {
                 channel.request_subsystem(true, "sftp").await.unwrap();
 
                 let sftp = SftpSession::new(channel.into_stream()).await.unwrap();
-                let src_path = match std::fs::canonicalize(src.unwrap_or(".".into())) {
-                    Ok(pth) => pth,
-                    Err(err) => {
-                        tracing::error!("Failed to canonicalize src = {err}");
-                        return Ok(());
-                    }
-                };
-                let prefix = calc_prefix(src_path.clone())?;
 
-                if dst.is_some() {
-                    match sftp.metadata(dst.as_ref().unwrap_or(&".".into())).await {
-                        Ok(attr) => {
-                            if !attr.is_dir() {
-                                panic!("Dst must be a dir!");
-                            }
-                        }
-                        Err(err) => {
-                            tracing::error!("Error remote metadata = {err}");
-                            return Ok(());
-                        }
-                    }
-                }
-
-                let dst_abs_path = sftp
-                    .canonicalize(&dst.unwrap_or(".".into()))
-                    .await
-                    .expect("Failed to canonicalize remote dst.");
-
-                // The .gitignore at src_path will be respected.
-                for result in biject_paths(
-                    src_path.to_str().unwrap(),
-                    prefix.to_str().unwrap_or(""),
-                    &dst_abs_path,
-                ) {
-                    match result {
-                        Ok((local_pth, combined, is_dir)) => {
-                            if is_dir {
-                                let _ =
-                                    sftp.create_dir(combined.to_str().unwrap().to_owned()).await;
-                            } else {
-                                let open_remote_file = sftp
-                                    .open_with_flags(
-                                        combined.to_str().unwrap(),
-                                        OpenFlags::CREATE | OpenFlags::TRUNCATE | OpenFlags::WRITE,
-                                    )
-                                    .await;
-                                if open_remote_file.is_err() {
-                                    tracing::warn!("Failed to open file = {:?}", combined,);
-                                }
-
-                                // Overwrite remote file contents with local file contents.
-                                if let Ok(mut remote_file) = open_remote_file {
-                                    let mut local_file = File::open(local_pth).unwrap();
-                                    let mut buffer = Vec::new();
-                                    local_file.read_to_end(&mut buffer).unwrap();
-                                    remote_file.write_all(buffer.as_slice()).await.unwrap();
-                                    let _ = remote_file.sync_all().await;
-                                    remote_file.shutdown().await.unwrap();
-                                }
-                            }
-                        }
-                        Err(err) => tracing::error!("ERROR: {}", err),
-                    }
-                }
+                upload(sftp, src, dst).await?;
             }
         }
         Commands::Run { command, .. } => {

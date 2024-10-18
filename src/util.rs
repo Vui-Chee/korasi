@@ -190,7 +190,7 @@ pub fn biject_paths<'a>(
             rel_pth.next();
             let transformed = PathBuf::from(dst_folder).join(rel_pth.as_str());
 
-            tracing::info!("path = {:?}", transformed);
+            tracing::info!("uploaded path = {:?}", transformed);
 
             Ok((local_pth, transformed, is_dir))
         }
