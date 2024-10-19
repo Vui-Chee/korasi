@@ -46,6 +46,7 @@ enum Commands {
 
     /// List all instances created by this tool, which is under
     /// the same tag.
+    #[clap(alias = "ls")]
     List,
 
     /// Delete 1 or more instances, where all options are displayed
@@ -100,6 +101,12 @@ enum Commands {
         #[arg(allow_hyphen_values = true, num_args = 1..)]
         command: Vec<String>,
     },
+
+    /// SSH into instance.
+    ///
+    /// Executes default `bash` shell.
+    #[clap(alias = "sh")]
+    Shell,
 }
 
 #[tokio::main]
@@ -245,6 +252,34 @@ async fn main() -> anyhow::Result<()> {
                     &command
                         .into_iter()
                         // arguments are escaped manually since the SSH protocol doesn't support quoting
+                        .map(|cmd_part| shell_escape::escape(cmd_part.into()))
+                        .collect::<Vec<_>>()
+                        .join(" "),
+                )
+                .await?;
+            session.close().await?;
+        }
+        Commands::Shell => {
+            let chosen = select_instance(
+                &ec2,
+                "Choose running instance to ssh:",
+                vec![InstanceStateName::Running],
+            )
+            .await
+            .unwrap();
+            tracing::info!(
+                "Chosen instance: name = {}, instance_id = {}",
+                chosen.name,
+                chosen.instance_id
+            );
+
+            let mut session =
+                Session::connect("ubuntu", chosen.public_dns_name.unwrap(), ssh_key).await?;
+            let _raw_term = std::io::stdout().into_raw_mode()?;
+            session
+                .exec(
+                    &vec!["bash"]
+                        .into_iter()
                         .map(|cmd_part| shell_escape::escape(cmd_part.into()))
                         .collect::<Vec<_>>()
                         .join(" "),
