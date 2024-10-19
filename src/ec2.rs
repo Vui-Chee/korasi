@@ -271,6 +271,8 @@ impl EC2Impl {
 
     /// List instances that are "active" (non-terminated) and are tagged
     /// by this tool.
+    ///
+    /// If statuses is an empty `Vec`, return all non-terminated instances as the default.
     pub async fn describe_instance(
         &self,
         mut statuses: Vec<InstanceStateName>,

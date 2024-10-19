@@ -1,13 +1,13 @@
 use aws_sdk_ec2::types::{InstanceStateName, InstanceType};
 use clap::{Parser, Subcommand};
-use inquire::Select;
+use inquire::{Select, Text};
+use termion::raw::IntoRawMode;
 
 use infra::create::CreateCommand;
 use infra::ec2::{EC2Impl as EC2, GLOBAL_TAG_FILTER};
 use infra::load_config;
 use infra::ssh::Session;
 use infra::util::{ids_to_str, multi_select_instances, select_instance};
-use termion::raw::IntoRawMode;
 
 #[derive(Debug, Parser)]
 #[command(arg_required_else_help = true)]
@@ -111,6 +111,12 @@ enum Commands {
     /// Executes default `bash` shell.
     #[clap(alias = "sh")]
     Shell,
+
+    /// Terminate all resources deployed by tool.
+    /// Does not remove AWS iAM permissions.
+    ///
+    /// Yugi: "I have assembled all the 5 pieces of Exodia. Exodia obliterate!"
+    Obliterate,
 }
 
 #[tokio::main]
@@ -291,6 +297,34 @@ async fn main() -> anyhow::Result<()> {
                 )
                 .await?;
             session.close().await?;
+        }
+        Commands::Obliterate => {
+            let yes = Text::new("Do you want to obliterate all resources [y/n]?:").prompt()?;
+            if !(yes == "y" || yes == "Y") {
+                tracing::warn!("Aborting obliterate.");
+                return Ok(());
+            }
+
+            // Passing empty vec means all non-terminated instances are returned.
+            let instances = ec2.describe_instance(vec![]).await?;
+            let select_all = instances.into_iter().map(|i| i.into()).collect();
+            let instance_ids = ids_to_str(select_all);
+
+            let grp = ec2.describe_security_group("allow-ssh").await?;
+            let grp_id = grp.as_ref().unwrap().group_id().unwrap();
+
+            let key_pairs = ec2.list_key_pair("ec2-ssh-key").await?;
+            let key_pair_ids: Vec<_> = key_pairs.iter().map(|k| k.key_pair_id().unwrap()).collect();
+
+            tracing::info!("instance_ids = {:?}", instance_ids);
+            tracing::info!("grp_id = {:?}", grp_id);
+            tracing::info!("key pairs = {:?}", key_pair_ids);
+
+            ec2.delete_instances(&instance_ids, true).await?;
+            ec2.delete_security_group(grp_id).await?;
+            for id in key_pair_ids {
+                ec2.delete_key_pair(id).await?;
+            }
         }
     };
 

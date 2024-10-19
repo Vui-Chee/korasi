@@ -1,16 +1,17 @@
 Must
 - [x] configure group tag for all resources created by this tool
-- [ ] global teardown of all resources created by this tool
+- [x] global teardown of all resources created by this tool
 - [ ] better hardware selection flow
 - [ ] display alternative UI in non-debug mode
-
-- [ ] auth login
 
 - [x] support stdin (eg. -y prompts to be received from opened session)
 - [x] shell subcommand to SSH into remote instance 
 - [x] respect .gitignore during syncing/upload
 
 Nice-to-have
+- [ ] auth login
+- [ ] some way to verify needed AWS permissions to use this tool.
+
 - [ ] show current billing
 - [ ] show pricing in select instance type options?
 - [ ] auto stop/terminate
