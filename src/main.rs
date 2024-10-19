@@ -222,11 +222,8 @@ async fn main() -> anyhow::Result<()> {
             .await
             {
                 tracing::info!("Chosen instance: {} = {}", chosen.name, chosen.instance_id);
-                let session = Session::connect(chosen.public_dns_name.unwrap(), ssh_key).await;
-
-                if let Ok(session) = session {
-                    session.upload(src, dst).await?;
-                }
+                let session = Session::connect(chosen.public_dns_name.unwrap(), ssh_key).await?;
+                session.upload(src, dst).await?;
             } else {
                 tracing::warn!("No active running instances to upload to.");
             }
@@ -250,21 +247,18 @@ async fn main() -> anyhow::Result<()> {
                 chosen.instance_id
             );
 
-            let session = Session::connect(chosen.public_dns_name.unwrap(), ssh_key).await;
-
-            if let Ok(session) = session {
-                session
-                    .exec(
-                        &command
-                            .into_iter()
-                            // arguments are escaped manually since the SSH protocol doesn't support quoting
-                            .map(|cmd_part| shell_escape::escape(cmd_part.into()))
-                            .collect::<Vec<_>>()
-                            .join(" "),
-                    )
-                    .await
-                    .unwrap();
-            }
+            let mut session = Session::connect(chosen.public_dns_name.unwrap(), ssh_key).await?;
+            session
+                .exec(
+                    &command
+                        .into_iter()
+                        // arguments are escaped manually since the SSH protocol doesn't support quoting
+                        .map(|cmd_part| shell_escape::escape(cmd_part.into()))
+                        .collect::<Vec<_>>()
+                        .join(" "),
+                )
+                .await?;
+            session.close().await?;
         }
     };
 

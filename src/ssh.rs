@@ -4,12 +4,14 @@ use async_trait::async_trait;
 use russh::{
     client::{self, Msg},
     keys::{decode_secret_key, key},
-    Channel, ChannelId, ChannelMsg,
+    Channel, ChannelId, ChannelMsg, Disconnect,
 };
 use russh_sftp::{client::SftpSession, protocol::OpenFlags};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use crate::util::{biject_paths, calc_prefix};
+
+pub const SSH_PORT: u16 = 22;
 
 pub struct ClientSSH;
 
@@ -42,6 +44,8 @@ pub struct Session {
 
 impl Session {
     /// Returns reusable remote channel that can used as a SSH/SFTP tunnel.
+    ///
+    /// This prevents direct access to private session.
     pub async fn channel_open_session(&self) -> Result<Channel<Msg>, russh::Error> {
         self.session.channel_open_session().await
     }
@@ -64,7 +68,7 @@ impl Session {
     pub async fn connect(public_dns_name: String, ssh_key: String) -> anyhow::Result<Self> {
         let config = russh::client::Config::default();
         let mut session =
-            russh::client::connect(Arc::new(config), (public_dns_name, 21), ClientSSH {})
+            russh::client::connect(Arc::new(config), (public_dns_name, SSH_PORT), ClientSSH {})
                 .await
                 .expect("Failed to establish SSH connection with remote instance.");
         let key_pair = Self::load_secret_key(ssh_key, None).unwrap();
@@ -82,12 +86,13 @@ impl Session {
         let mut channel = self.channel_open_session().await?;
         channel.exec(true, command).await?;
 
+        #[allow(unused_assignments)]
         let mut code = None;
 
-        let mut stdout = tokio::io::stdout();
-        let mut stderr = tokio::io::stderr();
+        let mut stdin = tokio_fd::AsyncFd::try_from(0)?;
+        let mut stdout = tokio_fd::AsyncFd::try_from(1)?;
+        let mut stderr = tokio_fd::AsyncFd::try_from(2)?;
 
-        let mut stdin = tokio::io::stdin();
         let mut buf = vec![0; 1024];
         let mut stdin_closed = false;
 
@@ -118,7 +123,7 @@ impl Session {
                             }
                             break;
                         }
-                        // Handle error
+                        // Get std error from remote command.
                         ChannelMsg::ExtendedData { ref data, ext: _ } => {
                             stderr.write_all(data).await?;
                             stderr.flush().await?;
@@ -132,7 +137,7 @@ impl Session {
         Ok(code.expect("program did not exit cleanly"))
     }
 
-    pub async fn open_sftp_session(&self) -> Result<SftpSession, russh_sftp::client::error::Error> {
+    async fn open_sftp_session(&self) -> Result<SftpSession, russh_sftp::client::error::Error> {
         let channel = self.session.channel_open_session().await.unwrap();
         channel.request_subsystem(true, "sftp").await.unwrap();
 
@@ -206,6 +211,16 @@ impl Session {
             }
         }
 
+        sftp.close().await?;
+
+        Ok(())
+    }
+
+    /// Closes SSH session.
+    pub async fn close(&mut self) -> anyhow::Result<()> {
+        self.session
+            .disconnect(Disconnect::ByApplication, "", "English")
+            .await?;
         Ok(())
     }
 }
