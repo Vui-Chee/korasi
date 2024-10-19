@@ -13,7 +13,11 @@ use aws_smithy_runtime_api::client::waiters::error::WaiterError;
 
 use crate::util::UtilImpl as Util;
 
+/// Co-locate all common keys here for now till a flexible
+/// configuration is needed.
 pub const GLOBAL_TAG_FILTER: &str = "hpc-launcher";
+pub const SSH_KEY_NAME: &str = "ec2-ssh-key";
+pub const SSH_SECURITY_GROUP: &str = "allow-ssh";
 
 #[derive(Clone)]
 pub struct EC2Impl {
@@ -426,15 +430,17 @@ impl EC2Impl {
             ))
         })?;
 
-        let group_name = "allow-ssh";
         let group = match self
-            .create_security_group(group_name, "Enables ssh into instance from your IP.")
+            .create_security_group(
+                SSH_SECURITY_GROUP,
+                "Enables ssh into instance from your IP.",
+            )
             .await
         {
             Ok(grp) => grp,
             Err(err) => {
                 // Try to find existing group (if any).
-                let res = self.describe_security_group(group_name).await?;
+                let res = self.describe_security_group(SSH_SECURITY_GROUP).await?;
 
                 if res.is_none() {
                     return Err(err);

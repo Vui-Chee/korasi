@@ -4,7 +4,7 @@ use inquire::{Select, Text};
 use termion::raw::IntoRawMode;
 
 use infra::create::CreateCommand;
-use infra::ec2::{EC2Impl as EC2, GLOBAL_TAG_FILTER};
+use infra::ec2::{EC2Impl as EC2, GLOBAL_TAG_FILTER, SSH_KEY_NAME, SSH_SECURITY_GROUP};
 use infra::load_config;
 use infra::ssh::Session;
 use infra::util::{ids_to_str, multi_select_instances, select_instance};
@@ -32,7 +32,9 @@ struct Opt {
     #[structopt(long, default_value = "start_up.sh")]
     setup: String,
 
-    /// Path to SSH private key.
+    /// Path to SSH private key (default Ed25519).
+    ///
+    /// For now, other key types are not handled at the moment.
     #[structopt(short, long, default_value = "ec2-ssh-key.pem")]
     ssh_key: String,
 
@@ -152,7 +154,7 @@ async fn main() -> anyhow::Result<()> {
                     &ec2,
                     machine,
                     ami_id,
-                    "ec2-ssh-key".into(),
+                    SSH_KEY_NAME.into(),
                     "start_up.sh".into(),
                 )
                 .await?;
@@ -276,27 +278,31 @@ async fn main() -> anyhow::Result<()> {
                 "Choose running instance to ssh:",
                 vec![InstanceStateName::Running],
             )
-            .await
-            .unwrap();
-            tracing::info!(
-                "Chosen instance: name = {}, instance_id = {}",
-                chosen.name,
-                chosen.instance_id
-            );
+            .await;
 
-            let mut session =
-                Session::connect("ubuntu", chosen.public_dns_name.unwrap(), ssh_key).await?;
-            let _raw_term = std::io::stdout().into_raw_mode()?;
-            session
-                .exec(
-                    &vec!["bash"]
-                        .into_iter()
-                        .map(|cmd_part| shell_escape::escape(cmd_part.into()))
-                        .collect::<Vec<_>>()
-                        .join(" "),
-                )
-                .await?;
-            session.close().await?;
+            if let Ok(chosen) = chosen {
+                tracing::info!(
+                    "Chosen instance: name = {}, instance_id = {}",
+                    chosen.name,
+                    chosen.instance_id
+                );
+
+                let mut session =
+                    Session::connect("ubuntu", chosen.public_dns_name.unwrap(), ssh_key).await?;
+                let _raw_term = std::io::stdout().into_raw_mode()?;
+                session
+                    .exec(
+                        &vec!["bash"]
+                            .into_iter()
+                            .map(|cmd_part| shell_escape::escape(cmd_part.into()))
+                            .collect::<Vec<_>>()
+                            .join(" "),
+                    )
+                    .await?;
+                session.close().await?;
+            } else {
+                tracing::warn!("There are no active instances to SSH into.");
+            }
         }
         Commands::Obliterate => {
             let yes = Text::new("Do you want to obliterate all resources [y/n]?:").prompt()?;
@@ -310,10 +316,10 @@ async fn main() -> anyhow::Result<()> {
             let select_all = instances.into_iter().map(|i| i.into()).collect();
             let instance_ids = ids_to_str(select_all);
 
-            let grp = ec2.describe_security_group("allow-ssh").await?;
+            let grp = ec2.describe_security_group(SSH_SECURITY_GROUP).await?;
             let grp_id = grp.as_ref().unwrap().group_id().unwrap();
 
-            let key_pairs = ec2.list_key_pair("ec2-ssh-key").await?;
+            let key_pairs = ec2.list_key_pair(SSH_KEY_NAME).await?;
             let key_pair_ids: Vec<_> = key_pairs.iter().map(|k| k.key_pair_id().unwrap()).collect();
 
             tracing::info!("instance_ids = {:?}", instance_ids);
