@@ -1,9 +1,11 @@
 Must
-- [ ] shell subcommand to SSH into remote instance 
+- [x] support stdin (eg. -y prompts to be received from opened session)
+- [x] shell subcommand to SSH into remote instance 
+
 - [ ] configure group tag for all resources created by this tool
 - [x] respect .gitignore during syncing/upload
-- [ ] display alternative UI in non-debug mode
 - [ ] better hardware selection flow
+- [ ] display alternative UI in non-debug mode
 
 Nice-to-have
 - [ ] auto stop/terminate
@@ -13,6 +15,7 @@ Nice-to-have
 - [ ] cargo remote test
 - [ ] init subcommand (to initialize boiler code to test AVX intrinsics eg.)
 - [ ] show current billing
+  - [ ] show pricing in select instance type options?
 - [ ] way to "tunnel" into local service running in remote server
 
 

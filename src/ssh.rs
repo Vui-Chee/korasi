@@ -1,4 +1,4 @@
-use std::{fs::File, io::Read, path::Path, sync::Arc};
+use std::{fs::File, io::Read, path::Path, sync::Arc, time::Duration};
 
 use async_trait::async_trait;
 use russh::{
@@ -65,8 +65,15 @@ impl Session {
     ///
     /// The public DNS name is the emphemeral host address generated when
     /// an EC2 instance starts.
-    pub async fn connect(public_dns_name: String, ssh_key: String) -> anyhow::Result<Self> {
-        let config = russh::client::Config::default();
+    pub async fn connect(
+        user: &str,
+        public_dns_name: String,
+        ssh_key: String,
+    ) -> anyhow::Result<Self> {
+        let config = russh::client::Config {
+            inactivity_timeout: Some(Duration::from_secs(5)),
+            ..<_>::default()
+        };
         let mut session =
             russh::client::connect(Arc::new(config), (public_dns_name, SSH_PORT), ClientSSH {})
                 .await
@@ -74,8 +81,7 @@ impl Session {
         let key_pair = Self::load_secret_key(ssh_key, None).unwrap();
 
         session
-            // TODO: Do not hardcode user
-            .authenticate_publickey("ubuntu", Arc::new(key_pair))
+            .authenticate_publickey(user, Arc::new(key_pair))
             .await?;
 
         Ok(Self { session })
@@ -84,15 +90,29 @@ impl Session {
     /// Executes a remote command using SSH.
     pub async fn exec(&self, command: &str) -> anyhow::Result<u32> {
         let mut channel = self.channel_open_session().await?;
-        channel.exec(true, command).await?;
 
-        #[allow(unused_assignments)]
-        let mut code = None;
+        // No terminal resizing after the connection is established.
+        let (w, h) = termion::terminal_size()?;
+        // Request an interactive PTY from the server.
+        channel
+            .request_pty(
+                false,
+                &std::env::var("TERM").unwrap_or("xterm".into()),
+                w as u32,
+                h as u32,
+                0,
+                0,
+                &[], // ideally you want to pass the actual terminal modes here
+            )
+            .await?;
+
+        channel.exec(true, command).await?;
 
         let mut stdin = tokio_fd::AsyncFd::try_from(0)?;
         let mut stdout = tokio_fd::AsyncFd::try_from(1)?;
         let mut stderr = tokio_fd::AsyncFd::try_from(2)?;
 
+        let code;
         let mut buf = vec![0; 1024];
         let mut stdin_closed = false;
 
@@ -144,15 +164,17 @@ impl Session {
         SftpSession::new(channel.into_stream()).await
     }
 
+    /// Upload files within `src` to `dst` directory using SFTP.
+    /// If `dst` is not specified, files will uploaded to $HOME/{cwd}.
+    /// The {cwd} folder will be created by default in this use case.
+    ///
+    /// Panics if dst is not a directory.
     pub async fn upload(&self, src: Option<String>, dst: Option<String>) -> anyhow::Result<()> {
         let src_path = match std::fs::canonicalize(src.unwrap_or(".".into())) {
             Ok(pth) => pth,
-            Err(err) => {
-                tracing::error!("Failed to canonicalize src = {err}");
-                return Ok(());
-            }
+            // Bail early if the src path is fked.
+            Err(err) => anyhow::bail!("Failed to canonicalize src = {err}"),
         };
-        let prefix = calc_prefix(src_path.clone())?;
 
         let sftp = self.open_sftp_session().await?;
 
@@ -160,7 +182,7 @@ impl Session {
             match sftp.metadata(dst.as_ref().unwrap_or(&".".into())).await {
                 Ok(attr) => {
                     if !attr.is_dir() {
-                        panic!("Dst must be a dir!");
+                        anyhow::bail!("Dst must be a dir!");
                     }
                 }
                 Err(err) => {
@@ -170,6 +192,7 @@ impl Session {
             }
         }
 
+        let prefix = calc_prefix(src_path.clone())?;
         let dst_abs_path = sftp
             .canonicalize(&dst.unwrap_or(".".into()))
             .await

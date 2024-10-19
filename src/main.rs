@@ -7,6 +7,7 @@ use infra::ec2::EC2Impl as EC2;
 use infra::load_config;
 use infra::ssh::Session;
 use infra::util::{ids_to_str, multi_select_instances, select_instance};
+use termion::raw::IntoRawMode;
 
 #[derive(Debug, Parser)]
 #[command(arg_required_else_help = true)]
@@ -222,7 +223,8 @@ async fn main() -> anyhow::Result<()> {
             .await
             {
                 tracing::info!("Chosen instance: {} = {}", chosen.name, chosen.instance_id);
-                let session = Session::connect(chosen.public_dns_name.unwrap(), ssh_key).await?;
+                let session =
+                    Session::connect("ubuntu", chosen.public_dns_name.unwrap(), ssh_key).await?;
                 session.upload(src, dst).await?;
             } else {
                 tracing::warn!("No active running instances to upload to.");
@@ -247,7 +249,9 @@ async fn main() -> anyhow::Result<()> {
                 chosen.instance_id
             );
 
-            let mut session = Session::connect(chosen.public_dns_name.unwrap(), ssh_key).await?;
+            let mut session =
+                Session::connect("ubuntu", chosen.public_dns_name.unwrap(), ssh_key).await?;
+            let _raw_term = std::io::stdout().into_raw_mode()?;
             session
                 .exec(
                     &command
