@@ -94,23 +94,11 @@ enum Commands {
     /// Only run commands that are non-blocking. Commands like
     /// opening `vi` does not working at the moment.
     ///
-    /// TODO: Allow client to send commands (read stdin) via SSH channel.
-    /// eg. impt for sudo prompts
-    ///
-    /// TODO: enable blocking commands to function from local.
-    /// eg. open a remote file using `vi`
-    ///
     /// TODO: run cmd from target directory.
+    #[clap(alias = "r")]
     Run {
         #[arg(allow_hyphen_values = true, num_args = 1..)]
         command: Vec<String>,
-
-        /// Set's the current working directory to execute command in.
-        /// Default path is $HOME.
-        ///
-        /// Think of it as a remote `cd`.
-        #[arg(long, short, default_value = "")]
-        path: String,
     },
 }
 
