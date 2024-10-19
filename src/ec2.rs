@@ -5,7 +5,7 @@ use aws_sdk_ec2::{
     error::ProvideErrorMetadata,
     types::{
         Filter, Instance, InstanceStateName, InstanceType, IpPermission, IpRange, KeyFormat,
-        KeyPairInfo, KeyType, ResourceType, SecurityGroup, Tag, TagSpecification,
+        KeyPairInfo, KeyType, SecurityGroup, Tag, TagSpecification,
     },
     Client as EC2Client,
 };
@@ -13,17 +13,17 @@ use aws_smithy_runtime_api::client::waiters::error::WaiterError;
 
 use crate::util::UtilImpl as Util;
 
-const GLOBAL_TAG_FILTER: &str = "hpc-launcher";
+pub const GLOBAL_TAG_FILTER: &str = "hpc-launcher";
 
 #[derive(Clone)]
 pub struct EC2Impl {
     pub client: EC2Client,
-    // TODO: group tag
+    tag: TagSpecification,
 }
 
 impl EC2Impl {
-    pub fn new(client: EC2Client) -> Self {
-        EC2Impl { client }
+    pub fn new(client: EC2Client, tag: TagSpecification) -> Self {
+        EC2Impl { client, tag }
     }
 
     pub async fn create_key_pair(
@@ -39,8 +39,7 @@ impl EC2Impl {
             .key_name(name)
             .key_type(key_type)
             .key_format(key_format)
-            // TODO: tag under same group
-            .set_tag_specifications(Some(vec![]))
+            .set_tag_specifications(Some(vec![self.tag.clone()]))
             .send()
             .await?;
         tracing::info!("key pair output = {:?}", output);
@@ -87,8 +86,7 @@ impl EC2Impl {
             .create_security_group()
             .group_name(name)
             .description(description)
-            // TODO: tag under same group
-            .set_tag_specifications(Some(vec![]))
+            .set_tag_specifications(Some(vec![self.tag.clone()]))
             .send()
             .await
             .map_err(EC2Error::from)?;
@@ -197,13 +195,7 @@ impl EC2Impl {
                     .collect(),
             ))
             .set_user_data(user_data)
-            .set_tag_specifications(Some(vec![TagSpecification::builder()
-                .set_resource_type(Some(ResourceType::Instance))
-                .set_tags(Some(vec![Tag::builder()
-                    .set_key(Some("application".into()))
-                    .set_value(Some("hpc-launcher".into()))
-                    .build()]))
-                .build()]))
+            .set_tag_specifications(Some(vec![self.tag.clone()]))
             .min_count(1)
             .max_count(1)
             .send()
