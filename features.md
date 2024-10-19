@@ -1,21 +1,25 @@
 Must
-- [ ] configure group tag for all resources created by this tool
+- [x] configure group tag for all resources created by this tool
+- [ ] global teardown of all resources created by this tool
 - [ ] better hardware selection flow
 - [ ] display alternative UI in non-debug mode
+
+- [ ] auth login
 
 - [x] support stdin (eg. -y prompts to be received from opened session)
 - [x] shell subcommand to SSH into remote instance 
 - [x] respect .gitignore during syncing/upload
 
 Nice-to-have
-- [ ] auth login
 - [ ] show current billing
 - [ ] show pricing in select instance type options?
-- [ ] cargo remote run
-- [ ] cargo remote check
-- [ ] cargo remote test
 - [ ] auto stop/terminate
-- [ ] init subcommand (to initialize boiler code to test AVX intrinsics eg.)
+- [x] cargo remote run/r
+
+- [ ] parse toml/yaml config to specify shortcut
+- [ ] cargo remote check/c (specific to rust)
+- [ ] cargo remote test/t
+
 - [x] way to "tunnel" into local service running in remote server
 
 1. dst must be a DIR that has been created

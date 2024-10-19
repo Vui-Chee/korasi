@@ -5,7 +5,7 @@ use aws_sdk_ec2::{
     error::ProvideErrorMetadata,
     types::{
         Filter, Instance, InstanceStateName, InstanceType, IpPermission, IpRange, KeyFormat,
-        KeyPairInfo, KeyType, SecurityGroup, Tag, TagSpecification,
+        KeyPairInfo, KeyType, ResourceType, SecurityGroup, Tag, TagSpecification,
     },
     Client as EC2Client,
 };
@@ -17,13 +17,30 @@ pub const GLOBAL_TAG_FILTER: &str = "hpc-launcher";
 
 #[derive(Clone)]
 pub struct EC2Impl {
+    /// AWS sdk client to access EC2 resources.
     pub client: EC2Client,
-    tag: TagSpecification,
+
+    /// Override default `GLOBAL_TAG_FILTER`.
+    custom_tag: Option<String>,
 }
 
 impl EC2Impl {
-    pub fn new(client: EC2Client, tag: TagSpecification) -> Self {
-        EC2Impl { client, tag }
+    pub fn new(client: EC2Client, custom_tag: Option<String>) -> Self {
+        EC2Impl { client, custom_tag }
+    }
+
+    pub fn create_tag(&self, res_type: ResourceType) -> TagSpecification {
+        TagSpecification::builder()
+            .set_resource_type(Some(res_type))
+            .set_tags(Some(vec![Tag::builder()
+                .set_key(Some("application".into()))
+                .set_value(Some(
+                    self.custom_tag
+                        .clone()
+                        .unwrap_or(GLOBAL_TAG_FILTER.to_string()),
+                ))
+                .build()]))
+            .build()
     }
 
     pub async fn create_key_pair(
@@ -39,7 +56,7 @@ impl EC2Impl {
             .key_name(name)
             .key_type(key_type)
             .key_format(key_format)
-            .set_tag_specifications(Some(vec![self.tag.clone()]))
+            .set_tag_specifications(Some(vec![self.create_tag(ResourceType::KeyPair)]))
             .send()
             .await?;
         tracing::info!("key pair output = {:?}", output);
@@ -86,7 +103,7 @@ impl EC2Impl {
             .create_security_group()
             .group_name(name)
             .description(description)
-            .set_tag_specifications(Some(vec![self.tag.clone()]))
+            .set_tag_specifications(Some(vec![self.create_tag(ResourceType::SecurityGroup)]))
             .send()
             .await
             .map_err(EC2Error::from)?;
@@ -195,7 +212,7 @@ impl EC2Impl {
                     .collect(),
             ))
             .set_user_data(user_data)
-            .set_tag_specifications(Some(vec![self.tag.clone()]))
+            .set_tag_specifications(Some(vec![self.create_tag(ResourceType::Instance)]))
             .min_count(1)
             .max_count(1)
             .send()
