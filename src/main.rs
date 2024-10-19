@@ -1,12 +1,11 @@
 use aws_sdk_ec2::types::{InstanceStateName, InstanceType};
 use clap::{Parser, Subcommand};
 use inquire::Select;
-use russh_sftp::client::SftpSession;
 
 use infra::create::CreateCommand;
 use infra::ec2::EC2Impl as EC2;
 use infra::load_config;
-use infra::ssh::{connect, exec, upload};
+use infra::ssh::Session;
 use infra::util::{ids_to_str, multi_select_instances, select_instance};
 
 #[derive(Debug, Parser)]
@@ -223,16 +222,10 @@ async fn main() -> anyhow::Result<()> {
             .await
             {
                 tracing::info!("Chosen instance: {} = {}", chosen.name, chosen.instance_id);
-
-                let session = connect(chosen.public_dns_name.unwrap(), ssh_key).await;
+                let session = Session::connect(chosen.public_dns_name.unwrap(), ssh_key).await;
 
                 if let Ok(session) = session {
-                    let channel = session.channel_open_session().await.unwrap();
-                    channel.request_subsystem(true, "sftp").await.unwrap();
-
-                    let sftp = SftpSession::new(channel.into_stream()).await.unwrap();
-
-                    upload(sftp, src, dst).await?;
+                    session.upload(src, dst).await?;
                 }
             } else {
                 tracing::warn!("No active running instances to upload to.");
@@ -257,20 +250,20 @@ async fn main() -> anyhow::Result<()> {
                 chosen.instance_id
             );
 
-            let session = connect(chosen.public_dns_name.unwrap(), ssh_key).await;
+            let session = Session::connect(chosen.public_dns_name.unwrap(), ssh_key).await;
 
             if let Ok(session) = session {
-                exec(
-                    session,
-                    &command
-                        .into_iter()
-                        // arguments are escaped manually since the SSH protocol doesn't support quoting
-                        .map(|cmd_part| shell_escape::escape(cmd_part.into()))
-                        .collect::<Vec<_>>()
-                        .join(" "),
-                )
-                .await
-                .unwrap();
+                session
+                    .exec(
+                        &command
+                            .into_iter()
+                            // arguments are escaped manually since the SSH protocol doesn't support quoting
+                            .map(|cmd_part| shell_escape::escape(cmd_part.into()))
+                            .collect::<Vec<_>>()
+                            .join(" "),
+                    )
+                    .await
+                    .unwrap();
             }
         }
     };
