@@ -1,39 +1,22 @@
 Must
-- [x] support stdin (eg. -y prompts to be received from opened session)
-- [x] shell subcommand to SSH into remote instance 
-
 - [ ] configure group tag for all resources created by this tool
-- [x] respect .gitignore during syncing/upload
 - [ ] better hardware selection flow
 - [ ] display alternative UI in non-debug mode
 
+- [x] support stdin (eg. -y prompts to be received from opened session)
+- [x] shell subcommand to SSH into remote instance 
+- [x] respect .gitignore during syncing/upload
+
 Nice-to-have
-- [ ] auto stop/terminate
 - [ ] auth login
+- [ ] show current billing
+- [ ] show pricing in select instance type options?
 - [ ] cargo remote run
 - [ ] cargo remote check
 - [ ] cargo remote test
+- [ ] auto stop/terminate
 - [ ] init subcommand (to initialize boiler code to test AVX intrinsics eg.)
-- [ ] show current billing
-  - [ ] show pricing in select instance type options?
-- [ ] way to "tunnel" into local service running in remote server
-
-
-What if you can open local vi to remote instance?
-Every change written to file will be immediately be synced
-to destination remote file.
-
-Useful only if you are vi user...
-
-FIX: user should be able to upload single file without specifying destination.
-./bin upload [file]
-
-no dst specified => default is root folder?
-
-DO NOT FOLLOW SCP completely
-
-
-UPLOAD != SCP
+- [x] way to "tunnel" into local service running in remote server
 
 1. dst must be a DIR that has been created
 
