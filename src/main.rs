@@ -1,3 +1,4 @@
+use anyhow::Context;
 use aws_sdk_ec2::types::{InstanceStateName, InstanceType};
 use clap::{Parser, Subcommand};
 use inquire::{Select, Text};
@@ -33,10 +34,11 @@ struct Opt {
     setup: String,
 
     /// Path to SSH private key (default Ed25519).
+    /// Default path is set to $HOME/.ssh/{pk}.
     ///
     /// For now, other key types are not handled at the moment.
-    #[structopt(short, long, default_value = "ec2-ssh-key.pem")]
-    ssh_key: String,
+    #[structopt(short, long)]
+    ssh_key: Option<String>,
 
     #[command(subcommand)]
     commands: Commands,
@@ -137,6 +139,17 @@ async fn main() -> anyhow::Result<()> {
         tracing_subscriber::fmt().init();
     }
 
+    let ssh_path = std::env::var("HOME")
+        .map(|h| {
+            if let Some(ssh_key) = ssh_key {
+                ssh_key
+            } else {
+                format!("{}/.ssh/{SSH_KEY_NAME}.pem", h)
+            }
+        })
+        .unwrap();
+    tracing::info!("Using SSH key at = {}", ssh_path);
+
     let shared_config = load_config(Some(region), Some(profile), None).await;
     let client = aws_sdk_ec2::Client::new(&shared_config);
     let ec2 = EC2::new(client, tag);
@@ -150,13 +163,7 @@ async fn main() -> anyhow::Result<()> {
                     .into();
             tracing::info!("Launching {machine} instance...");
             CreateCommand
-                .launch(
-                    &ec2,
-                    machine,
-                    ami_id,
-                    SSH_KEY_NAME.into(),
-                    "start_up.sh".into(),
-                )
+                .launch(&ec2, machine, ami_id, ssh_path, "start_up.sh".into())
                 .await?;
         }
         Commands::List => {
@@ -177,6 +184,7 @@ async fn main() -> anyhow::Result<()> {
                 let mut host = "".to_string();
                 if let Some(dns) = instance.public_dns_name() {
                     if !dns.is_empty() {
+                        // TODO: do not hardcode user
                         host = format!("ubuntu@{}", dns);
                     }
                 }
@@ -232,7 +240,7 @@ async fn main() -> anyhow::Result<()> {
             {
                 tracing::info!("Chosen instance: {} = {}", chosen.name, chosen.instance_id);
                 let session =
-                    Session::connect("ubuntu", chosen.public_dns_name.unwrap(), ssh_key).await?;
+                    Session::connect("ubuntu", chosen.public_dns_name.unwrap(), ssh_path).await?;
                 session.upload(src, dst).await?;
             } else {
                 tracing::warn!("No active running instances to upload to.");
@@ -258,7 +266,7 @@ async fn main() -> anyhow::Result<()> {
             );
 
             let mut session =
-                Session::connect("ubuntu", chosen.public_dns_name.unwrap(), ssh_key).await?;
+                Session::connect("ubuntu", chosen.public_dns_name.unwrap(), ssh_path).await?;
             let _raw_term = std::io::stdout().into_raw_mode()?;
             session
                 .exec(
@@ -288,7 +296,7 @@ async fn main() -> anyhow::Result<()> {
                 );
 
                 let mut session =
-                    Session::connect("ubuntu", chosen.public_dns_name.unwrap(), ssh_key).await?;
+                    Session::connect("ubuntu", chosen.public_dns_name.unwrap(), ssh_path).await?;
                 let _raw_term = std::io::stdout().into_raw_mode()?;
                 session
                     .exec(
@@ -331,6 +339,10 @@ async fn main() -> anyhow::Result<()> {
             for id in key_pair_ids {
                 ec2.delete_key_pair(id).await?;
             }
+
+            // Remove SSH key. PK is useless when key pair is deleted.
+            std::fs::remove_file(&ssh_path)
+                .with_context(|| format!("Failed to remove pk file at {ssh_path}."))?;
         }
     };
 

@@ -29,16 +29,10 @@ impl UtilImpl {
             .map_err(|e| EC2Error::new(format!("Failed to read response from {url}: {e:?}")))
     }
 
-    pub fn write_secure(
-        key_name: &str,
-        path: &PathBuf,
-        material: String,
-        mode: u32,
-    ) -> Result<(), EC2Error> {
+    pub fn write_secure(path: &PathBuf, material: String, mode: u32) -> Result<(), EC2Error> {
         let mut file = open_file_with_perm(path, mode)?;
-        file.write(material.as_bytes()).map_err(|e| {
-            EC2Error::new(format!("Failed to write {key_name} to {path:?} ({e:?})"))
-        })?;
+        file.write(material.as_bytes())
+            .map_err(|e| EC2Error::new(format!("Failed to write to {path:?} ({e:?})")))?;
         Ok(())
     }
 }

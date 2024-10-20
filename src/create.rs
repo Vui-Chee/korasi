@@ -4,6 +4,8 @@ use aws_sdk_ec2::types::{InstanceType, KeyFormat, KeyType};
 use base64::prelude::*;
 use petname::{Generator, Petnames};
 
+use crate::ec2::SSH_KEY_NAME;
+
 use super::ec2::{EC2Error, EC2Impl as EC2};
 use super::util::UtilImpl as Util;
 
@@ -16,31 +18,25 @@ impl CreateCommand {
         ec2: &EC2,
         machine: InstanceType,
         ami_id: String,
-        pk_name: String,
+        ssh_path: String,
         setup: String,
     ) -> Result<(), EC2Error> {
         let info = match ec2
-            .create_key_pair(&pk_name, KeyType::Ed25519, KeyFormat::Pem)
+            .create_key_pair(SSH_KEY_NAME, KeyType::Ed25519, KeyFormat::Pem)
             .await
         {
             Ok((info, material)) => {
                 tracing::info!("Saving PK to file...");
 
                 // Save private key.
-                // Ignore error if file already exists.
-                let _ = Util::write_secure(
-                    &pk_name,
-                    &format!("{}.pem", pk_name).into(),
-                    material,
-                    0o400,
-                );
+                Util::write_secure(&ssh_path.into(), material, 0o400)?;
 
                 Some(info)
             }
             Err(err) => {
                 // NOTE: This assumes user already saved the private key locally.
                 tracing::warn!("No key pair is created. Err = {}", err);
-                let output = ec2.list_key_pair(&pk_name).await?;
+                let output = ec2.list_key_pair(SSH_KEY_NAME).await?;
                 if !output.is_empty() {
                     tracing::info!(
                         "Reuse existing key pair: {:?}",
