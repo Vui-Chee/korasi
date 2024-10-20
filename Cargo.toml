@@ -1,7 +1,16 @@
 [package]
-name = "infra"
+name = "korasi-cli"
 version = "0.1.0"
+authors = ["Vui Chee <vc9000.work@gmail.com>"]
+license = "MIT"
+keywords = ["aws", "ssh", "sftp", "cli"]
+categories = ["command-line-utilities", "aws-sdk", "ssh"]
+readme = "README.md"
 edition = "2021"
+
+[[bin]]
+name = "korasi"
+path = "src/main.rs"
 
 [dependencies]
 anyhow = "1.0.89"

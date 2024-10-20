@@ -4,11 +4,11 @@ use clap::{Parser, Subcommand};
 use inquire::{Select, Text};
 use termion::raw::IntoRawMode;
 
-use infra::create::CreateCommand;
-use infra::ec2::{EC2Impl as EC2, GLOBAL_TAG_FILTER, SSH_KEY_NAME, SSH_SECURITY_GROUP};
-use infra::load_config;
-use infra::ssh::Session;
-use infra::util::{ids_to_str, multi_select_instances, select_instance};
+use korasi_cli::create::CreateCommand;
+use korasi_cli::ec2::{EC2Impl as EC2, GLOBAL_TAG_FILTER, SSH_KEY_NAME, SSH_SECURITY_GROUP};
+use korasi_cli::load_config;
+use korasi_cli::ssh::Session;
+use korasi_cli::util::{ids_to_str, multi_select_instances, select_instance};
 
 #[derive(Debug, Parser)]
 #[command(arg_required_else_help = true)]
