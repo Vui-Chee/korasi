@@ -80,12 +80,10 @@ impl EC2Impl {
             .client
             .describe_key_pairs()
             .key_names(key_names)
-            .set_filters(Some(vec![
-                Filter::builder()
-                    .set_name(Some("tag:application".into()))
-                    .set_values(Some(vec![GLOBAL_TAG_FILTER.into()]))
-                    .build(),
-            ]))
+            .set_filters(Some(vec![Filter::builder()
+                .set_name(Some("tag:application".into()))
+                .set_values(Some(vec![GLOBAL_TAG_FILTER.into()]))
+                .build()]))
             .send()
             .await?;
         Ok(output.key_pairs.unwrap_or_default())
