@@ -229,12 +229,13 @@ mod tests {
 
         let cases = [
             ("/", PathBuf::from("")),
-            ("features.md", cwd.clone()),
+            ("README.md", cwd.clone()),
             ("src/main.rs", cwd.join("src")),
             ("../outside-cwd", cwd.parent().unwrap().to_path_buf()),
         ];
 
         for (input, expected) in cases {
+            println!("input = {input}");
             let canon_pth = std::fs::canonicalize(input).unwrap();
             let got = calc_prefix(canon_pth);
             assert!(
