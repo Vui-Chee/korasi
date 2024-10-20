@@ -1,6 +1,7 @@
 # korasi
 
 [![Build status](https://img.shields.io/github/actions/workflow/status/vui-chee/korasi/ci.yml)](https://github.com/vui-chee/korasi/actions)
+[![Crates.io](https://img.shields.io/crates/v/korasi-cli.svg)](https://crates.io/crates/korasi-cli)
 
 An AWS client to spin up EC2 instances of various arch to run code that specifically compiles on certain type of hardware. For instance,
 if you are a M1 mac user, you may not have a Intel machine to run AVX intrinsics. Similarly, if you want to run Cuda code, and
