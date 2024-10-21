@@ -4,20 +4,20 @@ pub mod opt;
 pub mod ssh;
 pub mod util;
 
-use crate::ec2::{SSH_KEY_NAME, SSH_SECURITY_GROUP};
 use anyhow::Context;
 use aws_config::{
     self, meta::region::RegionProviderChain, timeout::TimeoutConfig, BehaviorVersion,
 };
 use aws_sdk_ec2::types::{InstanceStateName, InstanceType};
 use aws_types::{region::Region, SdkConfig as AwsSdkConfig};
-use create::CreateCommand;
-use ec2::EC2Impl as EC2;
 use inquire::{Select, Text};
-use opt::{Commands, Opt};
-use ssh::Session;
 use termion::raw::IntoRawMode;
 use tokio::time::Duration;
+
+use create::CreateCommand;
+use ec2::{EC2Impl as EC2, SSH_KEY_NAME, SSH_SECURITY_GROUP};
+use opt::{Commands, Opt};
+use ssh::Session;
 use util::{ids_to_str, multi_select_instances, select_instance};
 
 /// Loads an AWS config from default environments.

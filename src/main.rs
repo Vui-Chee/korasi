@@ -1,7 +1,6 @@
 use clap::Parser;
 
-use korasi_cli::opt::Opt;
-use korasi_cli::run;
+use korasi_cli::{opt::Opt, run};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
