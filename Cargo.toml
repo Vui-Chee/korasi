@@ -1,6 +1,6 @@
 [package]
 name = "korasi-cli"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Vui Chee <vc9000.work@gmail.com>"]
 license = "MIT"
 description = "An AWS client to remotely run code that compiles on certain type of hardware."
