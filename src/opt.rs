@@ -3,7 +3,7 @@ use clap::{Parser, Subcommand};
 use crate::ec2::GLOBAL_TAG_FILTER;
 
 #[derive(Debug, Parser)]
-#[command(arg_required_else_help = true)]
+#[command(version, arg_required_else_help = true)]
 pub struct Opt {
     /// AWS credentials profile to use (set in ~/.aws/credentials).
     #[structopt(short, long, default_value = "default")]
