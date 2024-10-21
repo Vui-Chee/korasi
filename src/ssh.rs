@@ -1,4 +1,4 @@
-use std::{fs::File, io::Read, path::Path, sync::Arc, time::Duration};
+use std::{fs::File, io::Read, path::Path, sync::Arc};
 
 use async_trait::async_trait;
 use russh::{
@@ -70,10 +70,7 @@ impl Session {
         public_dns_name: String,
         ssh_key: String,
     ) -> anyhow::Result<Self> {
-        let config = russh::client::Config {
-            inactivity_timeout: Some(Duration::from_secs(5)),
-            ..<_>::default()
-        };
+        let config = russh::client::Config { ..<_>::default() };
         let mut session =
             russh::client::connect(Arc::new(config), (public_dns_name, SSH_PORT), ClientSSH {})
                 .await
