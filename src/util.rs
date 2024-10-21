@@ -7,7 +7,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use aws_sdk_ec2::types::{Image, Instance, InstanceStateName};
+use aws_sdk_ec2::types::{Image, Instance, InstanceStateName, InstanceType};
 use ignore::Walk;
 use inquire::{InquireError, MultiSelect, Select};
 
@@ -81,6 +81,7 @@ pub struct SelectOption {
     pub instance_id: String,
     pub public_dns_name: Option<String>,
     state: Option<InstanceStateName>,
+    instance_type: Option<InstanceType>,
 }
 
 impl fmt::Display for SelectOption {
@@ -88,8 +89,11 @@ impl fmt::Display for SelectOption {
         let status = self.state.as_ref().unwrap().clone();
         write!(
             f,
-            "name = {}, instance_id = {}, status = {}",
-            self.name, self.instance_id, status
+            "name = {}, type = {}, instance_id = {}, status = {}",
+            self.name,
+            self.instance_type.as_ref().unwrap(),
+            self.instance_id,
+            status
         )
     }
 }
@@ -103,6 +107,7 @@ impl From<Instance> for SelectOption {
             ..SelectOption::default()
         };
 
+        opt.instance_type = value.instance_type().cloned();
         for t in value.tags() {
             if t.key() == Some("Name") {
                 opt.name = t.value().unwrap().to_owned();

@@ -190,9 +190,10 @@ async fn main() -> anyhow::Result<()> {
                 }
 
                 tracing::info!(
-                    "{}. {}, state = {:?}, {:?}",
+                    "{}. type = {:?}, {}, state = {:?}, {:?}",
                     i + 1,
                     name,
+                    instance.instance_type.as_ref().unwrap(),
                     instance.state().unwrap().name().unwrap(),
                     host,
                 );
