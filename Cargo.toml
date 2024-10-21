@@ -14,6 +14,10 @@ edition = "2021"
 name = "korasi"
 path = "src/main.rs"
 
+[[bin]]
+name = "cargo-korasi"
+path = "src/bin/cargo-korasi.rs"
+
 [dependencies]
 anyhow = "1.0.89"
 async-trait = "0.1.83"
