@@ -7,7 +7,6 @@ use korasi_cli::{opt::Opt, run};
 #[derive(Parser, Debug)]
 #[clap(bin_name = "cargo")]
 enum Cli {
-    #[clap(alias = "kor")]
     Korasi(Opt),
 }
 
