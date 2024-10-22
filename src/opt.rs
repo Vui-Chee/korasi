@@ -88,6 +88,9 @@ pub enum Commands {
         /// directory of remote. Root folder will be auto-created.
         #[arg(index = 2)]
         dst: Option<String>,
+
+        #[arg(short, long, default_value = "ubuntu")]
+        user: String,
     },
 
     /// Executes a given command on remote instance.
@@ -106,7 +109,10 @@ pub enum Commands {
     ///
     /// Executes default `bash` shell.
     #[clap(alias = "sh")]
-    Shell,
+    Shell {
+        #[arg(short, long, default_value = "ubuntu")]
+        user: String,
+    },
 
     /// Terminate all resources deployed by tool.
     /// Does not remove AWS iAM permissions.

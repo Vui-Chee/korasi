@@ -107,8 +107,7 @@ pub async fn run(opts: Opt) -> anyhow::Result<()> {
                 let mut host = "".to_string();
                 if let Some(dns) = instance.public_dns_name() {
                     if !dns.is_empty() {
-                        // TODO: do not hardcode user
-                        host = format!("ubuntu@{}", dns);
+                        host = format!("{}", dns);
                     }
                 }
 
@@ -166,7 +165,7 @@ pub async fn run(opts: Opt) -> anyhow::Result<()> {
                 }
             }
         }
-        Commands::Upload { src, dst } => {
+        Commands::Upload { src, dst, user } => {
             if let Ok(chosen) = select_instance(
                 &ec2,
                 "Choose running instance to upload files to:",
@@ -176,7 +175,7 @@ pub async fn run(opts: Opt) -> anyhow::Result<()> {
             {
                 tracing::info!("Chosen instance: {} = {}", chosen.name, chosen.instance_id);
                 let session =
-                    Session::connect("ubuntu", chosen.public_dns_name.unwrap(), ssh_path).await?;
+                    Session::connect(&user, chosen.public_dns_name.unwrap(), ssh_path).await?;
                 session.upload(src, dst).await?;
             } else {
                 tracing::warn!("No active running instances to upload to.");
@@ -216,7 +215,7 @@ pub async fn run(opts: Opt) -> anyhow::Result<()> {
                 .await?;
             session.close().await?;
         }
-        Commands::Shell => {
+        Commands::Shell { user } => {
             let chosen = select_instance(
                 &ec2,
                 "Choose running instance to ssh:",
@@ -232,7 +231,7 @@ pub async fn run(opts: Opt) -> anyhow::Result<()> {
                 );
 
                 let mut session =
-                    Session::connect("ubuntu", chosen.public_dns_name.unwrap(), ssh_path).await?;
+                    Session::connect(&user, chosen.public_dns_name.unwrap(), ssh_path).await?;
                 let _raw_term = std::io::stdout().into_raw_mode()?;
                 session
                     .exec(
