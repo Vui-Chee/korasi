@@ -127,7 +127,11 @@ pub async fn run(opts: Opt) -> anyhow::Result<()> {
                 multi_select_instances(&ec2, "Choose the instance(s):", vec![]).await
             {
                 let instance_ids = ids_to_str(chosen);
-                ec2.delete_instances(&instance_ids, wait).await?;
+                if instance_ids.is_empty() {
+                    tracing::warn!("Nothing is selected. Use [space] to select option.");
+                } else {
+                    ec2.delete_instances(&instance_ids, wait).await?;
+                }
             }
         }
         Commands::Start => {
@@ -139,7 +143,11 @@ pub async fn run(opts: Opt) -> anyhow::Result<()> {
             .await
             {
                 let instance_ids = ids_to_str(chosen);
-                ec2.start_instances(&instance_ids).await?;
+                if instance_ids.is_empty() {
+                    tracing::warn!("Nothing is selected. Use [space] to select option.");
+                } else {
+                    ec2.start_instances(&instance_ids).await?;
+                }
             }
         }
         Commands::Stop { wait } => {
@@ -151,7 +159,11 @@ pub async fn run(opts: Opt) -> anyhow::Result<()> {
             .await
             {
                 let instance_ids = ids_to_str(chosen);
-                ec2.stop_instances(&instance_ids, wait).await?;
+                if instance_ids.is_empty() {
+                    tracing::warn!("Nothing is selected. Use [space] to select option.");
+                } else {
+                    ec2.stop_instances(&instance_ids, wait).await?;
+                }
             }
         }
         Commands::Upload { src, dst } => {
