@@ -174,6 +174,8 @@ pub async fn run(opts: Opt) -> anyhow::Result<()> {
             .await
             {
                 tracing::info!("Chosen instance: {} = {}", chosen.name, chosen.instance_id);
+                // Refresh inbound IP.
+                ec2.get_ssh_security_group().await?;
                 let session =
                     Session::connect(&user, chosen.public_dns_name.unwrap(), ssh_path).await?;
                 session.upload(src, dst).await?;
@@ -199,6 +201,9 @@ pub async fn run(opts: Opt) -> anyhow::Result<()> {
                 chosen.name,
                 chosen.instance_id
             );
+
+            // Refresh inbound IP.
+            ec2.get_ssh_security_group().await?;
 
             let mut session =
                 Session::connect(&user, chosen.public_dns_name.unwrap(), ssh_path).await?;
@@ -230,6 +235,9 @@ pub async fn run(opts: Opt) -> anyhow::Result<()> {
                     chosen.name,
                     chosen.instance_id
                 );
+
+                // Refresh inbound IP.
+                ec2.get_ssh_security_group().await?;
 
                 let mut session =
                     Session::connect(&user, chosen.public_dns_name.unwrap(), ssh_path).await?;
