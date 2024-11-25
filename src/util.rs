@@ -7,10 +7,13 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use aws_sdk_ec2::types::{Image, Instance, InstanceStateName, InstanceType};
+use aws_sdk_ec2::types::{
+    Image, Instance, InstanceStateName, InstanceType, KeyFormat, KeyPairInfo, KeyType,
+};
 use ignore::Walk;
 use inquire::{InquireError, MultiSelect, Select};
 
+use crate::ec2::SSH_KEY_NAME;
 use crate::ec2::{EC2Error, EC2Impl as EC2};
 
 #[derive(Default)]
@@ -34,6 +37,40 @@ impl UtilImpl {
         file.write(material.as_bytes())
             .map_err(|e| EC2Error::new(format!("Failed to write to {path:?} ({e:?})")))?;
         Ok(())
+    }
+
+    pub async fn create_key_pair(
+        ec2: &EC2,
+        save_location: String,
+    ) -> Result<Option<KeyPairInfo>, EC2Error> {
+        match ec2
+            .create_key_pair(SSH_KEY_NAME, KeyType::Ed25519, KeyFormat::Pem)
+            .await
+        {
+            Ok((info, material)) => {
+                tracing::info!("Saving PK to file...");
+
+                // Save private key.
+                UtilImpl::write_secure(&save_location.into(), material, 0o400)?;
+
+                Ok(Some(info))
+            }
+            Err(err) => {
+                // NOTE: This assumes user already saved the private key locally.
+                tracing::warn!("No key pair is created. Err = {}", err);
+                let output = ec2.list_key_pair(SSH_KEY_NAME).await?;
+                if !output.is_empty() {
+                    tracing::info!(
+                        "Reuse existing key pair: {:?}",
+                        output[0].key_name.as_ref().unwrap()
+                    );
+                    Ok(Some(output[0].clone()))
+                } else {
+                    tracing::error!("No instance is created since no existing key pair is found.");
+                    Ok(None)
+                }
+            }
+        }
     }
 }
 

@@ -4,11 +4,13 @@ pub mod opt;
 pub mod ssh;
 pub mod util;
 
+use std::path::Path;
+
 use anyhow::Context;
 use aws_config::{
     self, meta::region::RegionProviderChain, timeout::TimeoutConfig, BehaviorVersion,
 };
-use aws_sdk_ec2::types::{InstanceStateName, InstanceType};
+use aws_sdk_ec2::types::{InstanceStateName, InstanceType, KeyPairInfo};
 use aws_types::{region::Region, SdkConfig as AwsSdkConfig};
 use inquire::{Select, Text};
 use termion::raw::IntoRawMode;
@@ -18,7 +20,7 @@ use create::CreateCommand;
 use ec2::{EC2Impl as EC2, SSH_KEY_NAME, SSH_SECURITY_GROUP};
 use opt::{Commands, Opt};
 use ssh::Session;
-use util::{ids_to_str, multi_select_instances, select_instance};
+use util::{ids_to_str, multi_select_instances, select_instance, UtilImpl as Util};
 
 /// Loads an AWS config from default environments.
 pub async fn load_config(
@@ -71,11 +73,17 @@ pub async fn run(opts: Opt) -> anyhow::Result<()> {
             }
         })
         .unwrap();
-    tracing::info!("Using SSH key at = {}", ssh_path);
 
     let shared_config = load_config(Some(region), Some(profile), None).await;
     let client = aws_sdk_ec2::Client::new(&shared_config);
     let ec2 = EC2::new(client, tag);
+
+    let mut info: Option<KeyPairInfo> = None;
+    if !Path::new(&ssh_path).exists() {
+        // This will create key pair if not exists and saves to location, otherwise, returns the info.
+        info = Util::create_key_pair(&ec2, ssh_path.clone()).await?;
+    }
+    tracing::info!("Using SSH key at = {}", ssh_path);
 
     match opts.commands {
         Commands::Create { ami_id } => {
@@ -86,7 +94,7 @@ pub async fn run(opts: Opt) -> anyhow::Result<()> {
                     .into();
             tracing::info!("Launching {machine} instance...");
             CreateCommand
-                .launch(&ec2, machine, ami_id, ssh_path, "start_up.sh".into())
+                .launch(&ec2, machine, ami_id, info.unwrap(), "start_up.sh".into())
                 .await?;
         }
         Commands::List => {
@@ -107,7 +115,7 @@ pub async fn run(opts: Opt) -> anyhow::Result<()> {
                 let mut host = "".to_string();
                 if let Some(dns) = instance.public_dns_name() {
                     if !dns.is_empty() {
-                        host = format!("{}", dns);
+                        host = dns.to_string();
                     }
                 }
 
