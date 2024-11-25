@@ -52,7 +52,7 @@ pub enum Commands {
     /// Delete 1 or more instances, where all options are displayed
     /// using a multi-select input.
     Delete {
-        #[arg(long, short, default_value_t = true)]
+        #[arg(long, short, default_value_t = false)]
         wait: bool,
     },
 
