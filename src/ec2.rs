@@ -393,7 +393,7 @@ impl EC2Impl {
     pub async fn delete_instances(&self, instance_ids: &str, wait: bool) -> Result<(), EC2Error> {
         tracing::info!("Deleting instance with id {:?}", instance_ids);
 
-        self.stop_instances(instance_ids, true).await?;
+        self.stop_instances(instance_ids, wait).await?;
 
         let mut terminator = self.client.terminate_instances();
         for id in instance_ids.split(",") {
