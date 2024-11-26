@@ -427,7 +427,10 @@ impl EC2Impl {
         Ok(())
     }
 
-    pub async fn get_ssh_security_group(&self) -> Result<SecurityGroup, EC2Error> {
+    /// Add new local IP to inbound security group.
+    ///
+    /// Local IPs can rotate or if you change to a different location.
+    async fn update_inbound_ip(&self, group_id: &str) -> Result<(), EC2Error> {
         let check_ip = Util::do_get("https://checkip.amazonaws.com").await?;
         tracing::info!("Current IP address = {}", check_ip);
 
@@ -438,6 +441,18 @@ impl EC2Impl {
             ))
         })?;
 
+        if let Err(err) = self
+            .authorize_security_group_ssh_ingress(group_id, vec![current_ip_address])
+            .await
+        {
+            tracing::warn!("Most likely inbound rule already exists. Err = {err}");
+        };
+
+        Ok(())
+    }
+
+    /// Call this function to update local IP in inbound group.
+    pub async fn get_ssh_security_group(&self) -> Result<SecurityGroup, EC2Error> {
         let group = match self
             .create_security_group(
                 SSH_SECURITY_GROUP,
@@ -458,17 +473,8 @@ impl EC2Impl {
             }
         };
 
-        if let Err(err) = self
-            .authorize_security_group_ssh_ingress(
-                group.group_id.as_ref().unwrap(),
-                vec![current_ip_address],
-            )
-            .await
-        {
-            // NOTE: This is for checking purposes. Sometimes area IP may rotate.
-            // We must ensure the security group permits the new IP.
-            tracing::warn!("Most likely inbound rule already exists. Err = {err}");
-        };
+        self.update_inbound_ip(group.group_id.as_ref().unwrap())
+            .await?;
 
         Ok(group)
     }

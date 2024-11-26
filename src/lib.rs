@@ -115,7 +115,7 @@ pub async fn run(opts: Opt) -> anyhow::Result<()> {
                 let mut host = "".to_string();
                 if let Some(dns) = instance.public_dns_name() {
                     if !dns.is_empty() {
-                        host = dns.to_string();
+                        host = dns.into();
                     }
                 }
 
@@ -182,6 +182,8 @@ pub async fn run(opts: Opt) -> anyhow::Result<()> {
             .await
             {
                 tracing::info!("Chosen instance: {} = {}", chosen.name, chosen.instance_id);
+                // Refresh inbound IP.
+                ec2.get_ssh_security_group().await?;
                 let session =
                     Session::connect(&user, chosen.public_dns_name.unwrap(), ssh_path).await?;
                 session.upload(src, dst).await?;
@@ -189,7 +191,7 @@ pub async fn run(opts: Opt) -> anyhow::Result<()> {
                 tracing::warn!("No active running instances to upload to.");
             }
         }
-        Commands::Run { command, .. } => {
+        Commands::Run { command, user } => {
             if command.is_empty() {
                 tracing::warn!("Please enter a command to run.");
                 return Ok(());
@@ -208,9 +210,13 @@ pub async fn run(opts: Opt) -> anyhow::Result<()> {
                 chosen.instance_id
             );
 
+            // Refresh inbound IP.
+            ec2.get_ssh_security_group().await?;
+
             let mut session =
-                Session::connect("ubuntu", chosen.public_dns_name.unwrap(), ssh_path).await?;
+                Session::connect(&user, chosen.public_dns_name.unwrap(), ssh_path).await?;
             let _raw_term = std::io::stdout().into_raw_mode()?;
+            // TODO: On centos, nothing is printed to stdout (message is received on SDK client).
             session
                 .exec(
                     &command
@@ -237,6 +243,9 @@ pub async fn run(opts: Opt) -> anyhow::Result<()> {
                     chosen.name,
                     chosen.instance_id
                 );
+
+                // Refresh inbound IP.
+                ec2.get_ssh_security_group().await?;
 
                 let mut session =
                     Session::connect(&user, chosen.public_dns_name.unwrap(), ssh_path).await?;

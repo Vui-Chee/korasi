@@ -70,7 +70,10 @@ impl Session {
         public_dns_name: String,
         ssh_key: String,
     ) -> anyhow::Result<Self> {
-        let config = russh::client::Config { ..<_>::default() };
+        let config = russh::client::Config {
+            inactivity_timeout: Some(std::time::Duration::from_secs(1200)), // 20 min.
+            ..<_>::default()
+        };
         let mut session =
             russh::client::connect(Arc::new(config), (public_dns_name, SSH_PORT), ClientSSH {})
                 .await

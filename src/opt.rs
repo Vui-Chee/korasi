@@ -38,7 +38,7 @@ pub struct Opt {
 
 #[derive(Debug, Subcommand)]
 pub enum Commands {
-    /// Create new instance, and print out SSH link.
+    /// Create new instance, and print out host.
     ///
     /// If not machine_type is specified, allow user to
     /// choose machine_type from list of options.
@@ -68,7 +68,7 @@ pub enum Commands {
         wait: bool,
     },
 
-    /// Upload local file(s) or directory to remote target instance.
+    /// Upload local file(s) or directory to remote target instance directory.
     ///
     /// Uses SFTP that rides on top of SSH to transfer files.
     Upload {
@@ -89,11 +89,13 @@ pub enum Commands {
         #[arg(index = 2)]
         dst: Option<String>,
 
+        /// Specify user for OS distro.
         #[arg(short, long, default_value = "ubuntu")]
         user: String,
     },
 
     /// Executes a given command on remote instance.
+    /// Warn: output is not printed on centos distro (there may be more).
     ///
     /// Only run commands that are non-blocking. Commands like
     /// opening `vi` does not working at the moment.
@@ -101,7 +103,11 @@ pub enum Commands {
     /// TODO: run cmd from target directory.
     #[clap(alias = "r")]
     Run {
-        #[arg(allow_hyphen_values = true, num_args = 1..)]
+        /// Specify user for OS distro.
+        #[arg(short, long, default_value = "ubuntu")]
+        user: String,
+
+        #[arg(allow_hyphen_values = true)]
         command: Vec<String>,
     },
 
@@ -110,6 +116,7 @@ pub enum Commands {
     /// Executes default `bash` shell.
     #[clap(alias = "sh")]
     Shell {
+        /// Specify user for OS distro.
         #[arg(short, long, default_value = "ubuntu")]
         user: String,
     },
