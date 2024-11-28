@@ -39,7 +39,7 @@ impl UtilImpl {
         Ok(())
     }
 
-    pub async fn create_key_pair(
+    pub async fn create_or_get_keypair(
         ec2: &EC2,
         save_location: String,
     ) -> Result<Option<KeyPairInfo>, EC2Error> {

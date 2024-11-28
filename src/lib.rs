@@ -4,13 +4,11 @@ pub mod opt;
 pub mod ssh;
 pub mod util;
 
-use std::path::Path;
-
 use anyhow::Context;
 use aws_config::{
     self, meta::region::RegionProviderChain, timeout::TimeoutConfig, BehaviorVersion,
 };
-use aws_sdk_ec2::types::{InstanceStateName, InstanceType, KeyPairInfo};
+use aws_sdk_ec2::types::{InstanceStateName, InstanceType};
 use aws_types::{region::Region, SdkConfig as AwsSdkConfig};
 use inquire::{Select, Text};
 use termion::raw::IntoRawMode;
@@ -78,11 +76,7 @@ pub async fn run(opts: Opt) -> anyhow::Result<()> {
     let client = aws_sdk_ec2::Client::new(&shared_config);
     let ec2 = EC2::new(client, tag);
 
-    let mut info: Option<KeyPairInfo> = None;
-    if !Path::new(&ssh_path).exists() {
-        // This will create key pair if not exists and saves to location, otherwise, returns the info.
-        info = Util::create_key_pair(&ec2, ssh_path.clone()).await?;
-    }
+    let info = Util::create_or_get_keypair(&ec2, ssh_path.clone()).await?;
     tracing::info!("Using SSH key at = {}", ssh_path);
 
     match opts.commands {
