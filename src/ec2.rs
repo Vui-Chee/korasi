@@ -9,7 +9,6 @@ use aws_sdk_ec2::{
     },
     Client as EC2Client,
 };
-use aws_smithy_runtime_api::client::waiters::error::WaiterError;
 
 use crate::util::UtilImpl as Util;
 
@@ -270,14 +269,7 @@ impl EC2Impl {
             .wait_until_instance_status_ok()
             .instance_ids(instance_id)
             .wait(duration.unwrap_or(Duration::from_secs(60)))
-            .await
-            .map_err(|err| match err {
-                WaiterError::ExceededMaxWait(exceeded) => EC2Error(format!(
-                    "Exceeded max time ({}s) waiting for instance to start.",
-                    exceeded.max_wait().as_secs()
-                )),
-                _ => EC2Error::from(err),
-            })?;
+            .await?;
         Ok(())
     }
 
@@ -378,14 +370,7 @@ impl EC2Impl {
         }
         waiter
             .wait(duration.unwrap_or(Duration::from_secs(90)))
-            .await
-            .map_err(|err| match err {
-                WaiterError::ExceededMaxWait(exceeded) => EC2Error(format!(
-                    "Exceeded max time ({}s) waiting for instance to stop.",
-                    exceeded.max_wait().as_secs(),
-                )),
-                _ => EC2Error::from(err),
-            })?;
+            .await?;
 
         Ok(())
     }
@@ -414,16 +399,7 @@ impl EC2Impl {
         for id in instance_ids.split(",") {
             waiter = waiter.instance_ids(id);
         }
-        waiter
-            .wait(Duration::from_secs(60))
-            .await
-            .map_err(|err| match err {
-                WaiterError::ExceededMaxWait(exceeded) => EC2Error(format!(
-                    "Exceeded max time ({}s) waiting for instance to terminate.",
-                    exceeded.max_wait().as_secs(),
-                )),
-                _ => EC2Error::from(err),
-            })?;
+        waiter.wait(Duration::from_secs(60)).await?;
         Ok(())
     }
 
