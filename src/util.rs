@@ -1,9 +1,9 @@
 //! IO Utilities wrapper to allow automock for requests and user input prompts.
 
+use ignore::Error;
 use std::{
     fmt::{self, Display},
     io::Write,
-    iter::Map,
     path::{Path, PathBuf},
 };
 
@@ -202,36 +202,32 @@ pub fn biject_paths<'a>(
     src_path: &str,
     prefix: &'a str,
     dst_folder: &'a str,
-) -> Map<
-    Walk,
-    impl FnMut(
-            Result<ignore::DirEntry, ignore::Error>,
-        ) -> Result<(PathBuf, PathBuf, bool), ignore::Error>
-        + 'a,
-> {
-    Walk::new(src_path).map(move |result| match result {
-        Ok(entry) => {
-            let is_dir = match entry.metadata() {
-                Ok(ent) => ent.is_dir(),
-                _ => false,
-            };
-            let local_pth = entry.path().to_path_buf();
-            let mut rel_pth = entry
-                .path()
-                .to_str()
-                .unwrap()
-                .strip_prefix(prefix)
-                .unwrap()
-                .chars();
-            rel_pth.next();
-            let transformed = PathBuf::from(dst_folder).join(rel_pth.as_str());
+) -> Vec<Result<(PathBuf, PathBuf, bool), Error>> {
+    Walk::new(src_path)
+        .map(move |result| match result {
+            Ok(entry) => {
+                let is_dir = match entry.metadata() {
+                    Ok(ent) => ent.is_dir(),
+                    _ => false,
+                };
+                let local_pth = entry.path().to_path_buf();
+                let mut rel_pth = entry
+                    .path()
+                    .to_str()
+                    .unwrap()
+                    .strip_prefix(prefix)
+                    .unwrap()
+                    .chars();
+                rel_pth.next();
+                let transformed = PathBuf::from(dst_folder).join(rel_pth.as_str());
 
-            tracing::info!("uploaded path = {:?}", transformed);
+                tracing::info!("uploaded path = {:?}", transformed);
 
-            Ok((local_pth, transformed, is_dir))
-        }
-        Err(err) => Err(err),
-    })
+                Ok((local_pth, transformed, is_dir))
+            }
+            Err(err) => Err(err),
+        })
+        .collect()
 }
 
 #[cfg(test)]
