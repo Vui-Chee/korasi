@@ -3,7 +3,7 @@ use std::{fs::File, io::Read, path::Path, sync::Arc};
 use async_trait::async_trait;
 use russh::{
     client::{self, Msg},
-    keys::{decode_secret_key, key},
+    keys::{decode_secret_key, PrivateKey, PublicKey},
     Channel, ChannelId, ChannelMsg, Disconnect,
 };
 use russh_sftp::{client::SftpSession, protocol::OpenFlags};
@@ -21,7 +21,7 @@ impl client::Handler for ClientSSH {
 
     async fn check_server_key(
         &mut self,
-        server_public_key: &key::PublicKey,
+        server_public_key: &PublicKey,
     ) -> Result<bool, Self::Error> {
         tracing::debug!("check_server_key: {:?}", server_public_key);
         Ok(true)
@@ -54,7 +54,7 @@ impl Session {
     pub fn load_secret_key<P: AsRef<Path>>(
         secret_: P,
         password: Option<&str>,
-    ) -> Result<key::KeyPair, anyhow::Error> {
+    ) -> Result<PrivateKey, anyhow::Error> {
         let mut secret_file = std::fs::File::open(secret_)?;
         let mut secret = String::new();
         secret_file.read_to_string(&mut secret)?;
