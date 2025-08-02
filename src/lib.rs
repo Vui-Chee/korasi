@@ -41,7 +41,7 @@ pub async fn load_config(
     }
     let timeout_cfg = builder.build();
 
-    let mut cfg = aws_config::defaults(BehaviorVersion::v2024_03_28())
+    let mut cfg = aws_config::defaults(BehaviorVersion::v2025_01_17())
         .region(reg_provider)
         .profile_name(profile_name.as_ref().unwrap_or(&"default".to_string()))
         .timeout_config(timeout_cfg);

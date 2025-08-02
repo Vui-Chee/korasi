@@ -1,9 +1,8 @@
 use std::{fs::File, io::Read, path::Path, sync::Arc};
 
-use async_trait::async_trait;
 use russh::{
     client::{self, Msg},
-    keys::{decode_secret_key, PrivateKey, PublicKey},
+    keys::{decode_secret_key, key::PrivateKeyWithHashAlg, PrivateKey, PublicKey},
     Channel, ChannelId, ChannelMsg, Disconnect,
 };
 use russh_sftp::{client::SftpSession, protocol::OpenFlags};
@@ -15,7 +14,6 @@ pub const SSH_PORT: u16 = 22;
 
 pub struct ClientSSH;
 
-#[async_trait]
 impl client::Handler for ClientSSH {
     type Error = anyhow::Error;
 
@@ -81,7 +79,14 @@ impl Session {
         let key_pair = Self::load_secret_key(ssh_key, None).unwrap();
 
         session
-            .authenticate_publickey(user, Arc::new(key_pair))
+            .authenticate_publickey(
+                user,
+                PrivateKeyWithHashAlg::new(
+                    Arc::new(key_pair),
+                    session.best_supported_rsa_hash().await?.flatten(),
+                ),
+            )
+            // .authenticate_publickey(user, Arc::new(key_pair))
             .await?;
 
         Ok(Self { session })
