@@ -311,10 +311,10 @@ mod tests {
             for result in biject_paths(x, y, z) {
                 match result {
                     Ok(entry) => {
-                        println!("entry = {:?}", entry);
+                        println!("entry = {entry:?}");
                     }
                     Err(err) => {
-                        println!("err = {}", err);
+                        println!("err = {err}");
                     }
                 }
             }
