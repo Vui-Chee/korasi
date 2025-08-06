@@ -30,7 +30,7 @@ ignore = "0.4.23"
 inquire = "0.7.5"
 petname = "2.0.2"
 reqwest = { version = "0.12.9", default-features = false, features = ["default-tls", "charset"] }
-russh = "0.53.0"
+russh = "0.54.1"
 russh-sftp = "2.1.1"
 shell-escape = "0.1.5"
 termion = "4.0.3"
