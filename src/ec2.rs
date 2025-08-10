@@ -1,13 +1,13 @@
 use std::{net::Ipv4Addr, time::Duration};
 
 use aws_sdk_ec2::{
+    Client as EC2Client,
     client::Waiters,
     error::ProvideErrorMetadata,
     types::{
         Filter, Instance, InstanceStateName, InstanceType, IpPermission, IpRange, KeyFormat,
         KeyPairInfo, KeyType, ResourceType, SecurityGroup, Tag, TagSpecification,
     },
-    Client as EC2Client,
 };
 
 use crate::util::UtilImpl as Util;
@@ -35,14 +35,16 @@ impl EC2Impl {
     pub fn create_tag(&self, res_type: ResourceType) -> TagSpecification {
         TagSpecification::builder()
             .set_resource_type(Some(res_type))
-            .set_tags(Some(vec![Tag::builder()
-                .set_key(Some("application".into()))
-                .set_value(Some(
-                    self.custom_tag
-                        .clone()
-                        .unwrap_or(GLOBAL_TAG_FILTER.to_string()),
-                ))
-                .build()]))
+            .set_tags(Some(vec![
+                Tag::builder()
+                    .set_key(Some("application".into()))
+                    .set_value(Some(
+                        self.custom_tag
+                            .clone()
+                            .unwrap_or(GLOBAL_TAG_FILTER.to_string()),
+                    ))
+                    .build(),
+            ]))
             .build()
     }
 
@@ -79,10 +81,12 @@ impl EC2Impl {
             .client
             .describe_key_pairs()
             .key_names(key_names)
-            .set_filters(Some(vec![Filter::builder()
-                .set_name(Some("tag:application".into()))
-                .set_values(Some(vec![GLOBAL_TAG_FILTER.into()]))
-                .build()]))
+            .set_filters(Some(vec![
+                Filter::builder()
+                    .set_name(Some("tag:application".into()))
+                    .set_values(Some(vec![GLOBAL_TAG_FILTER.into()]))
+                    .build(),
+            ]))
             .send()
             .await?;
         Ok(output.key_pairs.unwrap_or_default())
@@ -140,10 +144,12 @@ impl EC2Impl {
             .client
             .describe_security_groups()
             .group_names(group_name)
-            .set_filters(Some(vec![Filter::builder()
-                .set_name(Some("tag:application".into()))
-                .set_values(Some(vec![GLOBAL_TAG_FILTER.into()]))
-                .build()]))
+            .set_filters(Some(vec![
+                Filter::builder()
+                    .set_name(Some("tag:application".into()))
+                    .set_values(Some(vec![GLOBAL_TAG_FILTER.into()]))
+                    .build(),
+            ]))
             .send()
             .await?;
 
@@ -412,8 +418,7 @@ impl EC2Impl {
 
         let current_ip_address: Ipv4Addr = check_ip.trim().parse().map_err(|e| {
             EC2Error::new(format!(
-                "Failed to convert response {} to IP Address: {e:?}",
-                check_ip
+                "Failed to convert response {check_ip} to IP Address: {e:?}",
             ))
         })?;
 

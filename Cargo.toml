@@ -8,7 +8,7 @@ keywords = ["aws", "ssh", "sftp", "cli"]
 repository = "https://github.com/vui-chee/korasi"
 categories = ["command-line-utilities", "development-tools::cargo-plugins", "network-programming"]
 readme = "README.md"
-edition = "2021"
+edition = "2024"
 
 [[bin]]
 name = "korasi"
@@ -20,19 +20,18 @@ path = "src/bin/cargo-korasi.rs"
 
 [dependencies]
 anyhow = "1.0.89"
-async-trait = "0.1.83"
 aws-config = { version = "1.5.10", features = ["behavior-version-latest"] }
-aws-sdk-ec2 = "1.93.0"
-aws-sdk-ssm = "1.55.0"
+aws-sdk-ec2 = "1.154.0"
+aws-sdk-ssm = "1.87.0"
 aws-types = "1.3.3"
 base64 = "0.22.1"
 clap = { version = "4.5.21", features = ["derive"] }
 ignore = "0.4.23"
 inquire = "0.7.5"
 petname = "2.0.2"
-reqwest = { version = "0.12.9", default-features = false, features = ["default-tls", "charset"] }
-russh = "0.48.1"
-russh-sftp = "2.0.6"
+reqwest = { version = "0.12.22", default-features = false, features = ["default-tls", "charset"] }
+russh = "0.54.1"
+russh-sftp = "2.1.1"
 shell-escape = "0.1.5"
 termion = "4.0.3"
 tokio = { version = "1", features = ["rt", "io-std"] }

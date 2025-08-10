@@ -6,10 +6,10 @@ pub mod util;
 
 use anyhow::Context;
 use aws_config::{
-    self, meta::region::RegionProviderChain, timeout::TimeoutConfig, BehaviorVersion,
+    self, BehaviorVersion, meta::region::RegionProviderChain, timeout::TimeoutConfig,
 };
 use aws_sdk_ec2::types::{InstanceStateName, InstanceType};
-use aws_types::{region::Region, SdkConfig as AwsSdkConfig};
+use aws_types::{SdkConfig as AwsSdkConfig, region::Region};
 use inquire::{Select, Text};
 use termion::raw::IntoRawMode;
 use tokio::time::Duration;
@@ -18,7 +18,7 @@ use create::CreateCommand;
 use ec2::{EC2Impl as EC2, SSH_KEY_NAME, SSH_SECURITY_GROUP};
 use opt::{Commands, Opt};
 use ssh::Session;
-use util::{ids_to_str, multi_select_instances, select_instance, UtilImpl as Util};
+use util::{UtilImpl as Util, ids_to_str, multi_select_instances, select_instance};
 
 /// Loads an AWS config from default environments.
 pub async fn load_config(
@@ -41,7 +41,7 @@ pub async fn load_config(
     }
     let timeout_cfg = builder.build();
 
-    let mut cfg = aws_config::defaults(BehaviorVersion::v2024_03_28())
+    let mut cfg = aws_config::defaults(BehaviorVersion::v2025_01_17())
         .region(reg_provider)
         .profile_name(profile_name.as_ref().unwrap_or(&"default".to_string()))
         .timeout_config(timeout_cfg);
@@ -67,7 +67,7 @@ pub async fn run(opts: Opt) -> anyhow::Result<()> {
             if let Some(ssh_key) = ssh_key {
                 ssh_key
             } else {
-                format!("{}/.ssh/{SSH_KEY_NAME}.pem", h)
+                format!("{h}/.ssh/{SSH_KEY_NAME}.pem")
             }
         })
         .unwrap();
