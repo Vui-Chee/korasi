@@ -34,10 +34,10 @@ pub async fn load_config(
         .or_else(Region::new("ap-southeast-1"));
 
     let mut builder = TimeoutConfig::builder().connect_timeout(Duration::from_secs(5));
-    if let Some(to) = &operation_timeout {
-        if !to.is_zero() {
-            builder = builder.operation_timeout(*to);
-        }
+    if let Some(to) = &operation_timeout
+        && !to.is_zero()
+    {
+        builder = builder.operation_timeout(*to);
     }
     let timeout_cfg = builder.build();
 
@@ -107,10 +107,10 @@ pub async fn run(opts: Opt) -> anyhow::Result<()> {
                 }
 
                 let mut host = "".to_string();
-                if let Some(dns) = instance.public_dns_name() {
-                    if !dns.is_empty() {
-                        host = dns.into();
-                    }
+                if let Some(dns) = instance.public_dns_name()
+                    && !dns.is_empty()
+                {
+                    host = dns.into();
                 }
 
                 tracing::info!(
