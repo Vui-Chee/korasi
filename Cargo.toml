@@ -34,7 +34,7 @@ russh = "0.54.1"
 russh-sftp = "2.1.1"
 shell-escape = "0.1.5"
 termion = "4.0.3"
-tokio = { version = "1", features = ["rt", "io-std"] }
+tokio = { version = "1.47.1", features = ["rt", "io-std"] }
 tokio-fd = "0.3.0"
 tracing = "0.1.41"
 tracing-subscriber = "0.3.18"
