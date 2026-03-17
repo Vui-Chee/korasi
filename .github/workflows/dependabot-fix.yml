@@ -167,7 +167,7 @@ jobs:
             **STEP 5 — Apply the fix (only if all checks pass)**
 
             a) Create a branch:
-               `git checkout main && git pull origin main && git checkout -b fix/security-<package>-<rustsec-id>`
+               `git checkout master && git pull origin master && git checkout -b fix/security-<package>-<rustsec-id>`
 
             b) **Direct dependency**: edit the relevant `Cargo.toml` to bump the version requirement.
 
@@ -209,7 +209,7 @@ jobs:
                - [x] I have reviewed the relevant code guidelines in the \`docs/\` folder
                - [x] My code follows the coding standards of this project
                - [x] I have performed a self-review of my own code" \
-                 --base main
+                 --base master
                ```
 
             h) **Increment your internal PR count by 1.**
