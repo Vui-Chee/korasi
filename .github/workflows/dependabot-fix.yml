@@ -23,7 +23,7 @@ jobs:
 
       - name: Simplified GH Test
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GH_SECURITY_PAT }}
         run: |
           echo "Checking GH version again..."
           gh --version
