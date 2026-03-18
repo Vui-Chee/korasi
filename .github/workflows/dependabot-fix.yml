@@ -35,10 +35,10 @@ jobs:
             exit 1
           fi
 
-          # # Set GH_TOKEN inline on the command so it overrides the runner-pre-set value.
-          # # Fetch to a file first so a gh error is caught cleanly before jq runs.
-          # if ! GH_TOKEN="$DEPENDABOT_PAT" gh api "repos/${{ github.repository }}/dependabot/alerts" \
-          #       --paginate -f state=open > /tmp/alerts_raw.json; then
-          #   echo "::error::Failed to fetch Dependabot alerts. Ensure GH_SECURITY_PAT has 'Dependabot alerts: Read' permission and Dependabot is enabled for this repo."
-          #   exit 1
-          # fi
+          # Set GH_TOKEN inline on the command so it overrides the runner-pre-set value.
+          # Fetch to a file first so a gh error is caught cleanly before jq runs.
+          if ! GH_TOKEN="$DEPENDABOT_PAT" gh api "repos/${{ github.repository }}/dependabot/alerts" \
+                --paginate -f state=open > /tmp/alerts_raw.json; then
+            echo "::error::Failed to fetch Dependabot alerts. Ensure GH_SECURITY_PAT has 'Dependabot alerts: Read' permission and Dependabot is enabled for this repo."
+            exit 1
+          fi
