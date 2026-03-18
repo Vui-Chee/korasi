@@ -13,7 +13,6 @@ jobs:
       contents: write
       pull-requests: write
       security-events: read
-      dependabot: read
 
     steps:
       - name: Checkout repository
@@ -24,7 +23,7 @@ jobs:
 
       - name: Simplified GH Test
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GH_SECURITY_PAT }}
         run: |
           echo "Checking GH version again..."
           gh --version
@@ -39,7 +38,7 @@ jobs:
           # runner pre-sets for the gh CLI (pointing at GITHUB_TOKEN). The PAT is then
           # applied inline on the gh command so it always wins.
           # Requires a fine-grained PAT with "Dependabot alerts: Read" permission.
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GH_SECURITY_PAT }}
         run: |
           if [ -z "$GH_TOKEN" ]; then
             echo "::error::GH_SECURITY_PAT secret is not set. Add a fine-grained PAT with 'Dependabot alerts: Read' permission."
@@ -111,7 +110,7 @@ jobs:
         if: steps.alerts.outputs.has_alerts == 'true'
         uses: anthropics/claude-code-action@v1
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GH_SECURITY_PAT }}
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
