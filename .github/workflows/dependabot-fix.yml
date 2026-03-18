@@ -44,9 +44,14 @@ jobs:
             exit 1
           fi
 
-          if gh api "repos/${{ github.repository_owner }}/${{ github.repository }}/dependabot/alerts" \
-            --method GET --paginate -f state=open > /tmp/alerts_raw.json; then
-              echo "Successfully fetched dependabot alerts"
-          else
-            echo "Error: Failed to fetch dependabot alerts" >&2
-          fi
+          gh api "repos/${{ github.repository_owner }}/${{ github.repository }}/dependabot/alerts" \
+            --method GET --paginate -f state=open > /tmp/alerts_raw.json
+
+          ls -la /tmp/alerts_raw.json
+
+          # if gh api "repos/${{ github.repository_owner }}/${{ github.repository }}/dependabot/alerts" \
+          #   --method GET --paginate -f state=open > /tmp/alerts_raw.json; then
+          #     echo "Successfully fetched dependabot alerts"
+          # else
+          #   echo "Error: Failed to fetch dependabot alerts" >&2
+          # fi
