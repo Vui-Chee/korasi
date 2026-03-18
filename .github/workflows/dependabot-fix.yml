@@ -21,6 +21,12 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Debug Environment
+        run: |
+          which gh || echo "gh not found in PATH"
+          echo $PATH
+          gh --version
+
       - name: Fetch top 2 highest-risk Dependabot alerts
         id: alerts
         env:
