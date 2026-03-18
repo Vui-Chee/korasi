@@ -37,7 +37,7 @@ jobs:
           # runner pre-sets for the gh CLI (pointing at GITHUB_TOKEN). The PAT is then
           # applied inline on the gh command so it always wins.
           # Requires a fine-grained PAT with "Dependabot alerts: Read" permission.
-          GH_TOKEN: ${{ secrets.GH_SECURITY_PAT }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           if [ -z "$GH_TOKEN" ]; then
             echo "::error::GH_SECURITY_PAT secret is not set. Add a fine-grained PAT with 'Dependabot alerts: Read' permission."
