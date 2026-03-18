@@ -21,14 +21,15 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      # - name: Simplified GH Test
-      #   env:
-      #     DEPENDABOT_PAT: ${{ secrets.GH_SECURITY_PAT }}
-      #   run: |
-      #     echo "Checking GH version again..."
-      #     gh --version
-      #     echo "Attempting API call..."
-      #     GH_TOKEN="$DEPENDABOT_PAT" gh api "repos/${{ github.repository }}/dependabot/alerts" --method GET --paginate -f state=open
+      - name: Simplified GH Test
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "Checking GH version again..."
+          gh --version
+          echo "Attempting API call..."
+          gh api "repos/${{ github.repository }}/dependabot/alerts" --method GET --paginate -f state=open  > /tmp/alerts_raw.json
+          ls -la /tmp/alerts_raw.json
 
       - name: Fetch top 2 highest-risk Dependabot alerts
         id: alerts
