@@ -1,12 +1,12 @@
 name: Publish to crates.io
 
 on:
+  push:
+    branches:
+      - master
+    paths:
+      - "Cargo.toml"
   workflow_dispatch:
-    inputs:
-      version:
-        description: "Version to publish (must match Cargo.toml, e.g. 0.1.3)"
-        required: true
-        type: string
 
 jobs:
   publish:
@@ -21,18 +21,32 @@ jobs:
           profile: minimal
           toolchain: stable
 
-      - name: Verify version matches Cargo.toml
+      - name: Check if version is unpublished
+        id: version
         run: |
-          CARGO_VERSION=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].version')
-          INPUT_VERSION="${{ github.event.inputs.version }}"
-          if [ "$CARGO_VERSION" != "$INPUT_VERSION" ]; then
-            echo "Version mismatch: Cargo.toml has '$CARGO_VERSION' but input was '$INPUT_VERSION'"
-            exit 1
+          CURR=$(grep '^version' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+          echo "current=$CURR" >> $GITHUB_OUTPUT
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "changed=true" >> $GITHUB_OUTPUT
+            echo "Triggered manually, publishing version $CURR"
+            exit 0
           fi
-          echo "Version check passed: $CARGO_VERSION"
+
+          PUBLISHED=$(curl -s -H "User-Agent: korasi-ci" https://crates.io/api/v1/crates/korasi-cli | jq -r '.crate.newest_version')
+          echo "Published version: $PUBLISHED"
+          if [ "$CURR" != "$PUBLISHED" ]; then
+            echo "changed=true" >> $GITHUB_OUTPUT
+            echo "New version detected: $PUBLISHED -> $CURR, proceeding with publish"
+          else
+            echo "changed=false" >> $GITHUB_OUTPUT
+            echo "Version $CURR is already published, skipping"
+          fi
 
       - name: Run tests
+        if: steps.version.outputs.changed == 'true'
         run: cargo test
 
       - name: Publish to crates.io
+        if: steps.version.outputs.changed == 'true'
         run: cargo publish --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
