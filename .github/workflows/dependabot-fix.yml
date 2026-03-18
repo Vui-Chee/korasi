@@ -21,16 +21,6 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Simplified GH Test
-        env:
-          GH_TOKEN: ${{ secrets.GH_SECURITY_PAT }}
-        run: |
-          echo "Checking GH version again..."
-          gh --version
-          echo "Attempting API call..."
-          gh api "repos/${{ github.repository }}/dependabot/alerts" --method GET --paginate -f state=open  > /tmp/alerts_raw.json
-          ls -la /tmp/alerts_raw.json
-
       - name: Fetch top 2 highest-risk Dependabot alerts
         id: alerts
         env:
@@ -80,20 +70,25 @@ jobs:
             }
           ] | sort_by(.severity_rank)' /tmp/alerts_raw.json > /tmp/alerts_all.json
 
-          # Collect alert numbers that already have an open PR (branch: fix/security-*-<number>).
-          # The alert number is always the last dash-separated segment of the branch name.
+          # Collect branch names of open security PRs.
           # Use GITHUB_TOKEN here — GH_SECURITY_PAT only has Dependabot alerts read access
           # and cannot list pull requests, which would silently return [] and break deduplication.
-          HANDLED_NUMS=$(GH_TOKEN="$WORKFLOW_GITHUB_TOKEN" gh pr list \
+          # We match by package name (not alert number) because a single package can have
+          # multiple CVE alerts and a single PR may resolve several of them at once.
+          PR_BRANCHES=$(GH_TOKEN="$WORKFLOW_GITHUB_TOKEN" gh pr list \
             --repo "${{ github.repository }}" \
             --state open --limit 100 --json headRefName \
-            --jq '[.[].headRefName | select(startswith("fix/security-")) | split("-") | last] | unique' \
+            --jq '[.[].headRefName | select(startswith("fix/security-"))]' \
             || echo '[]')
-          echo "Alert numbers with existing open PRs: $HANDLED_NUMS"
+          echo "Open security PR branches: $PR_BRANCHES"
 
-          # Filter out already-handled alerts, then take the top 2 remaining.
-          jq --argjson handled "$HANDLED_NUMS" '
-            [.[] | select((.number | tostring) as $n | ($handled | index($n)) == null)] | .[0:2]
+          # Filter out alerts whose package already has an open security PR.
+          # For each alert, check if any open branch starts with fix/security-<package>-.
+          jq --argjson branches "$PR_BRANCHES" '
+            [.[] | select(
+              .package as $pkg |
+              ($branches | map(startswith("fix/security-\($pkg)-")) | any) | not
+            )] | .[0:2]
           ' /tmp/alerts_all.json > /tmp/alerts.json
 
           COUNT=$(jq 'length' /tmp/alerts.json)
@@ -156,7 +151,7 @@ jobs:
                ```
                git add -A
                git commit -m "fix(deps): update <package> to <first_patched> (<cve>)"
-               git push origin fix/security-<package>-<number>
+               git push "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git" HEAD:fix/security-<package>-<number>
                gh pr create \
                  --title "fix(deps): update <package> to <first_patched> (<severity> <cve>)" \
                  --body "## Description
