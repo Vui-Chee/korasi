@@ -21,11 +21,14 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Debug Environment
+      - name: Simplified GH Test
+        env:
+          DEPENDABOT_PAT: ${{ secrets.GH_SECURITY_PAT }}
         run: |
-          which gh || echo "gh not found in PATH"
-          echo $PATH
+          echo "Checking GH version again..."
           gh --version
+          echo "Attempting API call..."
+          GH_TOKEN="$DEPENDABOT_PAT" gh api "repos/${{ github.repository }}/dependabot/alerts" --paginate -f state=open
 
       - name: Fetch top 2 highest-risk Dependabot alerts
         id: alerts
@@ -34,17 +37,20 @@ jobs:
           # runner pre-sets for the gh CLI (pointing at GITHUB_TOKEN). The PAT is then
           # applied inline on the gh command so it always wins.
           # Requires a fine-grained PAT with "Dependabot alerts: Read" permission.
-          DEPENDABOT_PAT: ${{ secrets.GH_SECURITY_PAT }}
+          GH_TOKEN: ${{ secrets.GH_SECURITY_PAT }}
         run: |
-          if [ -z "$DEPENDABOT_PAT" ]; then
+          if [ -z "$GH_TOKEN" ]; then
             echo "::error::GH_SECURITY_PAT secret is not set. Add a fine-grained PAT with 'Dependabot alerts: Read' permission."
             exit 1
           fi
 
-          # Set GH_TOKEN inline on the command so it overrides the runner-pre-set value.
-          # Fetch to a file first so a gh error is caught cleanly before jq runs.
-          if ! GH_TOKEN="$DEPENDABOT_PAT" gh api "repos/${{ github.repository }}/dependabot/alerts" \
-                --paginate -f state=open > /tmp/alerts_raw.json; then
-            echo "::error::Failed to fetch Dependabot alerts. Ensure GH_SECURITY_PAT has 'Dependabot alerts: Read' permission and Dependabot is enabled for this repo."
-            exit 1
-          fi
+          # gh api "repos/${{ github.repository }}/dependabot/alerts" \
+          #       --paginate -f state=open > /tmp/alerts_raw.json
+
+          # # Set GH_TOKEN inline on the command so it overrides the runner-pre-set value.
+          # # Fetch to a file first so a gh error is caught cleanly before jq runs.
+          # if ! gh api "repos/${{ github.repository }}/dependabot/alerts" \
+          #       --paginate -f state=open > /tmp/alerts_raw.json; then
+          #   echo "::error::Failed to fetch Dependabot alerts. Ensure GH_SECURITY_PAT has 'Dependabot alerts: Read' permission and Dependabot is enabled for this repo."
+          #   exit 1
+          # fi
