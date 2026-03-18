@@ -44,7 +44,7 @@ jobs:
             exit 1
           fi
 
-          gh api "repos/${{ github.repository_owner }}/${{ github.repository }}/dependabot/alerts" \
+          gh api "repos/${{ github.repository }}/dependabot/alerts" \
             --method GET --paginate -f state=open > /tmp/alerts_raw.json
 
           ls -la /tmp/alerts_raw.json
