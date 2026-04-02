@@ -25,7 +25,7 @@ jobs:
         env:
           # Requires a classic PAT with 'repo' scope, or any token with repo access.
           # GraphQL vulnerabilityAlerts works without security_events scope.
-          GH_TOKEN: ${{ secrets.gh_pat }}
+          GH_TOKEN: ${{ secrets.GH_SECURITY_PAT }}
           # Needed for listing PRs (pull-requests: write is granted in the permissions block).
           WORKFLOW_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -141,9 +141,6 @@ jobs:
         uses: anthropics/claude-code-action@v1
         env:
           GH_TOKEN: ${{ secrets.GH_SECURITY_PAT }}
-          JIRA_AUTH: ${{ secrets.jira_auth }}
-          JIRA_ACCOUNT_ID: ${{ secrets.jira_account_id }}
-          JIRA_DOMAIN: ${{ secrets.jira_domain }}
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
@@ -216,37 +213,6 @@ jobs:
                - [x] My code follows the coding standards of this project
                - [x] I have performed a self-review of my own code" \
                  --base ${{ github.event.repository.default_branch }}
-               ```
-
-            6. After opening a PR successfully, create a Jira sub-task under XLOP-711 using
-               the credentials available in the environment. Do not print or log the credentials.
-               Use `jq` to build the JSON body safely (never interpolate shell variables directly
-               into the JSON string). Use the PR title as the Jira summary and include the PR URL
-               in the description:
-               ```
-               PR_URL=$(gh pr view --json url -q .url)
-               JIRA_AUTH_B64=$(printf '%s' "$JIRA_AUTH" | base64 -w 0)
-               BODY=$(jq -n \
-                 --arg summary "<pr title>" \
-                 --arg url "$PR_URL" \
-                 --arg account_id "$JIRA_ACCOUNT_ID" \
-                 '{
-                   "fields": {
-                     "project": { "key": "XLOP" },
-                     "summary": $summary,
-                     "description": {
-                       "type": "doc", "version": 1,
-                       "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": ("GitHub PR: " + $url) }] }]
-                     },
-                     "issuetype": { "name": "Sub-task" },
-                     "parent": { "key": "XLOP-711" },
-                     "assignee": { "accountId": $account_id }
-                   }
-                 }')
-               curl -s -X POST "https://$JIRA_DOMAIN/rest/api/3/issue" \
-                 -H "Authorization: Basic $JIRA_AUTH_B64" \
-                 -H "Content-Type: application/json" \
-                 -d "$BODY" | jq -r '.key'
                ```
 
             Only skip an alert (with a clear note explaining what was tried and why it was
