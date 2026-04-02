@@ -12,73 +12,91 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
-      security-events: read
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Simplified GH Test
-        env:
-          GH_TOKEN: ${{ secrets.GH_SECURITY_PAT }}
-        run: |
-          echo "Checking GH version again..."
-          gh --version
-          echo "Attempting API call..."
-          gh api "repos/${{ github.repository }}/dependabot/alerts" --method GET --paginate -f state=open  > /tmp/alerts_raw.json
-          ls -la /tmp/alerts_raw.json
-
-      - name: Fetch top 2 highest-risk Dependabot alerts
+      - name: Fetch top highest-risk Dependabot alerts
         id: alerts
         env:
-          # Use a distinct name to avoid collision with the GH_TOKEN that the Actions
-          # runner pre-sets for the gh CLI (pointing at GITHUB_TOKEN). The PAT is then
-          # applied inline on the gh command so it always wins.
-          # Requires a fine-grained PAT with "Dependabot alerts: Read" permission.
-          GH_TOKEN: ${{ secrets.GH_SECURITY_PAT }}
+          # Requires a classic PAT with 'repo' scope, or any token with repo access.
+          # GraphQL vulnerabilityAlerts works without security_events scope.
+          GH_TOKEN: ${{ secrets.gh_pat }}
           # Needed for listing PRs (pull-requests: write is granted in the permissions block).
-          # GH_SECURITY_PAT only has Dependabot alerts read access, not PR access.
           WORKFLOW_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           if [ -z "$GH_TOKEN" ]; then
-            echo "::error::GH_SECURITY_PAT secret is not set. Add a fine-grained PAT with 'Dependabot alerts: Read' permission."
+            echo "::error::GH_SECURITY_PAT secret is not set. Add a classic PAT with 'repo' scope."
             exit 1
           fi
 
-          if gh api "repos/${{ github.repository }}/dependabot/alerts" \
-            --method GET --paginate -f state=open > /tmp/alerts_raw.json; then
-              echo "Successfully fetched dependabot alerts"
-          else
-            echo "Error: Failed to fetch dependabot alerts" >&2
-          fi
+          REPO_OWNER=$(echo "${{ github.repository }}" | cut -d'/' -f1)
+          REPO_NAME=$(echo "${{ github.repository }}" | cut -d'/' -f2)
 
-          # Keep moderate/high/critical, sort by severity (critical=0, high=1, medium=2).
-          # No limit yet — existing open PRs are filtered out below before taking top 2.
+          # Use GraphQL — works with 'repo' scope alone, unlike the REST /dependabot/alerts
+          # endpoint which silently returns [] without the security_events scope.
           # Written to a file — never interpolated into the Claude prompt — to prevent prompt injection.
-          jq '[
-            .[] |
-            select(.security_advisory.severity | ascii_downcase | IN("critical","high","medium")) |
+          RESPONSE=$(curl -sS \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Content-Type: application/json" \
+            https://api.github.com/graphql \
+            -d "$(jq -n \
+              --arg owner "$REPO_OWNER" \
+              --arg name "$REPO_NAME" \
+              --arg query 'query($owner: String!, $name: String!) {
+                repository(owner: $owner, name: $name) {
+                  vulnerabilityAlerts(first: 100, states: OPEN) {
+                    nodes {
+                      number
+                      vulnerableManifestPath
+                      securityVulnerability {
+                        package { name }
+                        vulnerableVersionRange
+                        firstPatchedVersion { identifier }
+                        advisory {
+                          ghsaId summary severity
+                          identifiers { type value }
+                        }
+                      }
+                    }
+                  }
+                }
+              }' \
+              '{query: $query, variables: {owner: $owner, name: $name}}')")
+
+          if echo "$RESPONSE" | jq -e '.errors' > /dev/null 2>&1; then
+            echo "::error::GraphQL error: $(echo "$RESPONSE" | jq -r '.errors[].message')" >&2
+            exit 1
+          fi
+          echo "Successfully fetched dependabot alerts"
+
+          # Transform GraphQL response into the flat format used downstream.
+          # Sort by severity (critical=0, high=1, medium=2, low=3).
+          echo "$RESPONSE" | jq --arg repo "${{ github.repository }}" '[
+            .data.repository.vulnerabilityAlerts.nodes[] |
             {
               number:          .number,
-              package:         .dependency.package.name,
-              manifest_path:   .dependency.manifest_path,
-              severity:        .security_advisory.severity,
-              summary:         .security_advisory.summary,
-              vulnerable_range:.security_vulnerability.vulnerable_version_range,
-              first_patched:   .security_vulnerability.first_patched_version.identifier,
-              cve:             (.security_advisory.cve_id // .security_advisory.ghsa_id),
-              url:             .html_url,
+              package:         .securityVulnerability.package.name,
+              manifest_path:   .vulnerableManifestPath,
+              severity:        (.securityVulnerability.advisory.severity | ascii_downcase),
+              summary:         .securityVulnerability.advisory.summary,
+              vulnerable_range:.securityVulnerability.vulnerableVersionRange,
+              first_patched:   .securityVulnerability.firstPatchedVersion.identifier,
+              cve:             ((.securityVulnerability.advisory.identifiers | map(select(.type == "CVE")) | first | .value) // .securityVulnerability.advisory.ghsaId),
+              url:             ("https://github.com/" + $repo + "/security/dependabot/" + (.number | tostring)),
               severity_rank: (
-                .security_advisory.severity | ascii_downcase |
+                .securityVulnerability.advisory.severity | ascii_downcase |
                 if . == "critical" then 0
                 elif . == "high"   then 1
-                else                    2 end
+                elif . == "medium" then 2
+                else                    3 end
               )
             }
-          ] | sort_by(.severity_rank)' /tmp/alerts_raw.json > /tmp/alerts_all.json
+          ] | sort_by(.severity_rank)' > /tmp/alerts_all.json
 
           # Collect branch names of open security PRs.
           # Use GITHUB_TOKEN here — GH_SECURITY_PAT only has Dependabot alerts read access
@@ -98,14 +116,14 @@ jobs:
             [.[] | select(
               .package as $pkg |
               ($branches | map(startswith("fix/security-\($pkg)-")) | any) | not
-            )] | .[0:2]
+            )] | .[0:5]
           ' /tmp/alerts_all.json > /tmp/alerts.json
 
           COUNT=$(jq 'length' /tmp/alerts.json)
           echo "Alerts selected for fixing: $COUNT"
 
           if [ "$COUNT" -eq 0 ]; then
-            echo "No moderate/high/critical alerts found. Nothing to do."
+            echo "No alerts found. Nothing to do."
             echo "has_alerts=false" >> "$GITHUB_OUTPUT"
           else
             echo "has_alerts=true" >> "$GITHUB_OUTPUT"
@@ -123,6 +141,9 @@ jobs:
         uses: anthropics/claude-code-action@v1
         env:
           GH_TOKEN: ${{ secrets.GH_SECURITY_PAT }}
+          JIRA_AUTH: ${{ secrets.jira_auth }}
+          JIRA_ACCOUNT_ID: ${{ secrets.jira_account_id }}
+          JIRA_DOMAIN: ${{ secrets.jira_domain }}
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
@@ -142,28 +163,38 @@ jobs:
 
             2. Check `first_patched` — this is the minimum safe version. If it is null, skip.
 
-            3. Confirm the bump stays within the same major version (semver-compatible). If it
-               crosses a major version boundary, skip.
-
-            4. Apply the fix on a new branch:
+            3. Create a new branch and attempt the upgrade even if it crosses a major version
+               boundary or a transitive dependency chain blocks the direct update:
                ```
                git checkout ${{ github.event.repository.default_branch }}
                git pull origin ${{ github.event.repository.default_branch }}
                git checkout -b fix/security-<package>-<number>
                ```
-               - Direct dep: edit the version in `Cargo.toml`
+               - Direct dep: edit the version constraint in `Cargo.toml`
                - Transitive dep: run `cargo update <package> --precise <first_patched>`
+               - If `cargo update` fails because an intermediary crate pins an older version,
+                 identify that intermediary crate and try upgrading it to a version that accepts
+                 the patched release. Update `Cargo.toml` and re-run `cargo update`.
 
-            5. Verify: `cargo check --workspace 2>&1 | tail -20`
-               If it fails, `git checkout .` and skip this alert.
+            4. After the version bump, run `cargo check --workspace 2>&1` to see if there are
+               compilation errors. If there are errors:
+               a. Read each error carefully. For straightforward API changes (renamed types,
+                  moved modules, changed function signatures, added/removed trait bounds, etc.)
+                  edit the affected source files to adapt the call sites.
+               b. Re-run `cargo check --workspace 2>&1` after each batch of fixes.
+               c. Repeat until either the build succeeds or you determine the changes are too
+                  invasive (e.g. require rewriting core logic, affect more than ~10 files, or
+                  require deep domain knowledge you cannot infer from the compiler errors and
+                  crate changelogs).
 
-            6. Commit, push, and open a PR:
+            5. If the build succeeds, commit, push, and open a PR:
                ```
                git add -A
                git commit -m "fix(deps): update <package> to <first_patched> (<cve>)"
                git push "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git" HEAD:fix/security-<package>-<number>
                gh pr create \
                  --title "fix(deps): update <package> to <first_patched> (<severity> <cve>)" \
+                 --reviewer "vui-chee,JimmyShi22" \
                  --body "## Description
                Bumps **<package>** to resolve a <severity> severity vulnerability.
 
@@ -178,7 +209,7 @@ jobs:
                - **Fixed in**: <first_patched>
 
                ## Change
-               <what was changed>
+               <what was changed, including any API adaptation in source files>
 
                ## Checklist
                - [x] I have reviewed the relevant code guidelines in the \`docs/\` folder
@@ -187,9 +218,46 @@ jobs:
                  --base ${{ github.event.repository.default_branch }}
                ```
 
-            Skip an alert (with a note) if: `first_patched` is null, the fix crosses a major
-            version boundary, `cargo check` fails, or you are not confident.
+            6. After opening a PR successfully, create a Jira sub-task under XLOP-711 using
+               the credentials available in the environment. Do not print or log the credentials.
+               Use `jq` to build the JSON body safely (never interpolate shell variables directly
+               into the JSON string). Use the PR title as the Jira summary and include the PR URL
+               in the description:
+               ```
+               PR_URL=$(gh pr view --json url -q .url)
+               JIRA_AUTH_B64=$(printf '%s' "$JIRA_AUTH" | base64 -w 0)
+               BODY=$(jq -n \
+                 --arg summary "<pr title>" \
+                 --arg url "$PR_URL" \
+                 --arg account_id "$JIRA_ACCOUNT_ID" \
+                 '{
+                   "fields": {
+                     "project": { "key": "XLOP" },
+                     "summary": $summary,
+                     "description": {
+                       "type": "doc", "version": 1,
+                       "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": ("GitHub PR: " + $url) }] }]
+                     },
+                     "issuetype": { "name": "Sub-task" },
+                     "parent": { "key": "XLOP-711" },
+                     "assignee": { "accountId": $account_id }
+                   }
+                 }')
+               curl -s -X POST "https://$JIRA_DOMAIN/rest/api/3/issue" \
+                 -H "Authorization: Basic $JIRA_AUTH_B64" \
+                 -H "Content-Type: application/json" \
+                 -d "$BODY" | jq -r '.key'
+               ```
+
+            Only skip an alert (with a clear note explaining what was tried and why it was
+            abandoned) if:
+            - `first_patched` is null
+            - The upgrade requires rewriting more than ~10 source files
+            - The breaking changes require deep domain-specific logic you cannot safely infer
+              from compiler errors alone
+            - The intermediary crate chain is too deep to unblock without a large coordinated
+              upgrade
 
             Print a short summary table when done:
-            | Alert # | Package | Severity | Result |
-            |---------|---------|----------|--------|
+            | Alert # | Package | Severity | Result | Notes |
+            |---------|---------|----------|--------|-------|
