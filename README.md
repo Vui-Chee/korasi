@@ -1,3 +1,5 @@
+<img src="logo.png">
+
 # korasi
 
 [![Build status](https://img.shields.io/github/actions/workflow/status/vui-chee/korasi/ci.yml)](https://github.com/vui-chee/korasi/actions)
